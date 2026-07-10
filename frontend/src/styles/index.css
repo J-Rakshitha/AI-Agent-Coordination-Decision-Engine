@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- Theme tokens ---------- */
+/* Dark theme is the default (no class needed on <html>). */
+:root {
+  --color-bg: #0B0E14;
+  --color-surface: #131722;
+  --color-border: #232838;
+
+  --text-primary: #F1F5F9;   /* headings / strong text */
+  --text-secondary: #CBD5E1; /* body text */
+  --text-muted: #94A3B8;     /* secondary labels */
+  --text-faint: #64748B;     /* least prominent text */
+}
+
+/* Light theme overrides — applied when <html class="light"> */
+html.light {
+  --color-bg: #F5F7FA;
+  --color-surface: #FFFFFF;
+  --color-border: #E2E8F0;
+
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --text-faint: #94A3B8;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply bg-base-bg text-ink-secondary font-body;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-base-border rounded-full;
+}

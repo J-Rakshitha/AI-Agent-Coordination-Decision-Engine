@@ -1,0 +1,18 @@
+# --- Backend (Python) ---
+venv/
+__pycache__/
+*.pyc
+*.db
+.env
+.pytest_cache/
+
+# --- Frontend (Node) ---
+node_modules/
+dist/
+.vite/
+*.log
+
+# --- OS / Editor ---
+.DS_Store
+.vscode/
+.idea/
