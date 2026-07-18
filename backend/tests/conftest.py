@@ -19,7 +19,7 @@ from app.main import app
 from app.core.database import engine, Base
 
 # Import all models so Base.metadata knows about every table.
-from app.models import dev_collab, incident, memory  # noqa: F401
+from app.models import dev_collab, incident, memory, tool_execution  # noqa: F401
 
 
 @pytest_asyncio.fixture(autouse=True)

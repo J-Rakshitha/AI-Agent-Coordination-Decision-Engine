@@ -22,3 +22,10 @@ CONFLICT_RESOLUTION_PROMPT = ChatPromptTemplate.from_template(
     "{memory_context}\n"
     "In 2 short sentences, suggest how they should coordinate to avoid losing each other's work."
 )
+
+TOOL_SELECTION_PROMPT = ChatPromptTemplate.from_template(
+    "You are selecting the single best tool to handle this situation.\n"
+    "Situation: {situation}\n\n"
+    "Available tools:\n{tool_descriptions}\n\n"
+    "Reply with ONLY the exact tool name from the list above, nothing else."
+)

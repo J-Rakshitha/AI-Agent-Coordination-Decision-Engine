@@ -102,6 +102,23 @@ uvicorn app.main:app --reload --port 8000
 
 Visit **http://localhost:8000/docs** to see and test every API endpoint interactively.
 
+### Running Automated Tests
+
+The backend has a pytest suite covering every major flow (Dev-Collaboration,
+AIOps, Memory/Knowledge Base, System endpoints) — deterministic, no network
+or API key required (LLM is force-disabled in tests, so only the rule-based
+path runs):
+
+```bash
+cd backend
+pip install -r requirements.txt   # includes pytest + pytest-asyncio
+pytest -v
+```
+
+All tests use an isolated `test_coordination_engine.db` (separate from your
+real dev database) and reset schema before every test, so they never
+interfere with data you're using for a live demo.
+
 ### 2. Frontend
 
 ```bash
@@ -119,6 +136,25 @@ Visit **http://localhost:5173**.
 > carefully reviewed, but please run the install + start steps above on
 > your machine and open an issue-list of anything that errors — happy to
 > fix immediately in the next phase.
+
+---
+
+## Alignment with Infosys Springboard Project Brief
+
+| Required Outcome | Where it's implemented |
+|---|---|
+| Multi-Agent Coordination Framework | `Coordinator Agent` + 10 specialized agents across both modules |
+| Intelligent Decision Support | Severity, Root-Cause, Remediation, Conflict-Risk agents |
+| **Tool & System Integration** | `External Lookup Agent` calls GitHub's real public Issue Search API to cross-reference error patterns against publicly reported issues; `/api/system/knowledge-base` exposes agent-learned insights for other enterprise tools to consume |
+| **Shared Knowledge & Memory Management** | `MemoryAgent` — **long-term memory** (`KnowledgeEntry` table, persists across restarts, reused before re-reasoning) + **short-term memory** (recent `AgentDecisionLog` entries fed as context into every LLM prompt) |
+| Workflow Automation Platform | Full incident-response and conflict-resolution pipelines run end-to-end with zero manual steps |
+| Enterprise API Layer | FastAPI REST + WebSocket layer, documented at `/docs` |
+| **LangChain configured** (Milestone 1) | `HybridAIClient` uses `langchain_google_genai.ChatGoogleGenerativeAI` for all LLM calls |
+| **Basic testing interfaces** (Milestone 1) | `pytest` suite (`backend/tests/`) covering every module, run with `pytest -v` |
+| **Custom enterprise tools & API connectors** (Milestone 2) | `app/agents/tools/tool_registry.py` — 5 registered tools (GitHub lookup, escalation ticket, knowledge-base query, restart-service, clear-cache) |
+| **Intelligent tool selection** (Milestone 2) | `ToolSelectorAgent` — LangChain LLM selection with a deterministic keyword-based fallback, wired into the real incident pipeline |
+| **Tool invocation + exception handling** (Milestone 2) | `ToolExecutorAgent` wraps every tool call in try/except; covered by `tests/test_tool_selection.py` |
+| **Action execution accuracy** (Milestone 2) | `ToolExecutionLog` table + `/api/tools/accuracy` — real measured success rate, overall and per-tool |
 
 ---
 

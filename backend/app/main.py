@@ -20,8 +20,9 @@ from app.core.database import init_db
 from app.models import dev_collab  # noqa: F401
 from app.models import incident  # noqa: F401
 from app.models import memory  # noqa: F401
+from app.models import tool_execution  # noqa: F401
 
-from app.routers import dev_collab_routes, incident_routes, system_routes, websocket_routes
+from app.routers import dev_collab_routes, incident_routes, system_routes, websocket_routes, tool_routes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
@@ -57,6 +58,7 @@ app.include_router(dev_collab_routes.router)
 app.include_router(incident_routes.router)
 app.include_router(system_routes.router)
 app.include_router(websocket_routes.router)
+app.include_router(tool_routes.router)
 
 
 @app.get("/")

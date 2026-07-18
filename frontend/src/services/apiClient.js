@@ -32,4 +32,9 @@ export const toggleLlmFailure = (enabled) => apiClient.post(`/api/system/toggle-
 export const getLlmFailureStatus = () => apiClient.get("/api/system/llm-failure-status");
 export const getDecisionLog = () => apiClient.get("/api/system/decision-log");
 
+// ---------- Tool Integration (Milestone 2) ----------
+export const listTools = () => apiClient.get("/api/tools/");
+export const selectAndExecuteTool = (payload) => apiClient.post("/api/tools/select-and-execute", payload);
+export const getToolAccuracy = () => apiClient.get("/api/tools/accuracy");
+
 export default apiClient;

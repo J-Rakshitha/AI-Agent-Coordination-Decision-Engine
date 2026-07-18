@@ -3,6 +3,7 @@ import { ServerCog, RefreshCw, Sparkles, Loader2, GitCommit, ExternalLink } from
 import { listIncidents, simulateIncident } from "../services/apiClient";
 import { useLiveSocketContext } from "../context/LiveSocketContext";
 import DecisionTrail from "../components/common/DecisionTrail";
+import ToolIntegrationPanel from "../components/common/ToolIntegrationPanel";
 
 const severityColor = {
   P1: "text-red-400 border-red-500/40",
@@ -126,6 +127,8 @@ export default function AIOpsPage() {
             ))}
           </div>
         </div>
+
+        <ToolIntegrationPanel />
       </div>
 
       <div className="lg:col-span-1">

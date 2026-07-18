@@ -15,10 +15,11 @@ from app.models.dev_collab import CommitLog
 from app.agents.aiops.monitoring_agent import MonitoringAgent
 from app.agents.aiops.root_cause_agent import RootCauseAgent
 from app.agents.aiops.severity_agent import SeverityAgent
-from app.agents.aiops.remediation_agent import RemediationAgent
 from app.agents.aiops.escalation_agent import EscalationAgent
 from app.agents.aiops.external_lookup_agent import ExternalLookupAgent
 from app.agents.coordinator_agent import CoordinatorAgent
+from app.agents.tools.tool_executor_agent import ToolExecutorAgent
+from app.agents.tools import tool_handlers  # noqa: F401 — populates the tool registry
 from app.services.synthetic_data_generator import random_metrics_snapshot
 from app.routers.websocket_routes import manager
 
@@ -70,10 +71,21 @@ async def run_incident_pipeline(db: AsyncSession, metrics: dict) -> dict:
     severity = SeverityAgent.classify(anomaly["error_rate_pct"], anomaly["affected_users_pct"])
     incident.severity = severity
 
-    action_type = RemediationAgent.decide_action(root_cause_result["root_cause"])
-    action = await RemediationAgent.perform_action(db, incident.id, action_type)
+    # Milestone 2 — intelligent tool selection: instead of one hardcoded
+    # rule, the Tool Selector Agent picks the best of several registered
+    # tools (restart_service, clear_cache, create_escalation_ticket, ...)
+    # based on the situation, with full exception handling around the call.
+    situation = f"Incident on {anomaly['service_name']}, severity {severity}: {root_cause_result['root_cause']}"
+    tool_result = await ToolExecutorAgent.select_and_execute(
+        db, situation,
+        incident_id=incident.id,
+        severity=severity,
+        reason=root_cause_result["root_cause"],
+    )
+    action_taken = tool_result["tool_name"]
+    remediation_succeeded = tool_result["tool_name"] in ("restart_service", "clear_cache") and tool_result["success"]
 
-    if action.success:
+    if remediation_succeeded:
         incident.status = "auto_resolved"
         incident.resolved_at = datetime.utcnow()
         incident.mttr_seconds = int((incident.resolved_at - incident.detected_at).total_seconds())
@@ -85,7 +97,7 @@ async def run_incident_pipeline(db: AsyncSession, metrics: dict) -> dict:
     await db.refresh(incident)
 
     escalation = None
-    if not action.success or severity == "P1":
+    if not remediation_succeeded or severity == "P1":
         escalation = EscalationAgent.build_escalation(incident.id, severity, root_cause_result["root_cause"])
 
     # Cross-module linking (unique differentiator) — trace the incident back
@@ -106,7 +118,8 @@ async def run_incident_pipeline(db: AsyncSession, metrics: dict) -> dict:
         "incident_id": incident.id,
         "severity": severity,
         "root_cause": incident.root_cause,
-        "action_taken": action.action_type,
+        "action_taken": action_taken,
+        "tool_selection_used_llm": tool_result["used_llm_selection"],
         "status": incident.status,
         "escalation": escalation,
         "linked_commit_id": incident.linked_commit_id,
