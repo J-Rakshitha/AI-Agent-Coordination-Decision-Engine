@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     # Synthetic data generator toggle (safe demo mode)
     SYNTHETIC_DATA_ENABLED: bool = True
 
+    # Real GitHub Integration (Phase A — replaces simulated dev-collab data)
+    GITHUB_TOKEN: str = ""
+    GITHUB_REPO_OWNER: str = "J-Rakshitha"
+    GITHUB_REPO_NAME: str = "dev-collab-test-repo"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

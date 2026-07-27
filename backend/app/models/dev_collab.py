@@ -43,6 +43,8 @@ class ConflictEvent(Base):
     dev_b_id: Mapped[int] = mapped_column(ForeignKey("developers.id"))
     risk_score: Mapped[float] = mapped_column(Float, default=0.0)  # 0-100 %
     status: Mapped[str] = mapped_column(String(30), default="predicted")  # predicted | resolved | ignored
+    source: Mapped[str] = mapped_column(String(20), default="simulated")  # simulated | github
+    source_url: Mapped[str] = mapped_column(String(500), nullable=True)
     ai_suggestion: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     resolved_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)

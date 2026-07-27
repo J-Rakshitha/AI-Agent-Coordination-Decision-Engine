@@ -61,7 +61,8 @@ class ConflictPredictionAgent:
 
     @staticmethod
     async def create_conflict_event(db, file_path: str, function_name: str,
-                                      dev_a_id: int, dev_b_id: int, risk_score: float) -> ConflictEvent:
+                                      dev_a_id: int, dev_b_id: int, risk_score: float,
+                                      source: str = "simulated", source_url: str | None = None) -> ConflictEvent:
         event = ConflictEvent(
             file_path=file_path,
             function_name=function_name,
@@ -69,6 +70,8 @@ class ConflictPredictionAgent:
             dev_b_id=dev_b_id,
             risk_score=risk_score,
             status="predicted",
+            source=source,
+            source_url=source_url,
         )
         db.add(event)
         await db.commit()

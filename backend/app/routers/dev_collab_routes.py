@@ -16,6 +16,8 @@ from app.models.dev_collab import Developer, ConflictEvent, CommitLog
 from app.agents.dev_collab.code_watch_agent import CodeWatchAgent
 from app.agents.dev_collab.conflict_prediction_agent import OverlapDetectionAgent, ConflictPredictionAgent
 from app.agents.dev_collab.resolution_suggestion_agent import ResolutionSuggestionAgent
+from app.agents.dev_collab.github_integration_agent import GitHubIntegrationAgent
+from app.agents.coordinator_agent import CoordinatorAgent
 from app.services.synthetic_data_generator import random_edit_event
 from app.routers.websocket_routes import manager
 
@@ -134,6 +136,8 @@ async def list_conflicts(db: AsyncSession = Depends(get_db)):
             "dev_b": dev_b.name if dev_b else f"Dev #{c.dev_b_id}",
             "risk_score": c.risk_score,
             "status": c.status,
+            "source": c.source,
+            "source_url": c.source_url,
             "ai_suggestion": c.ai_suggestion,
             "created_at": c.created_at,
         })
@@ -234,3 +238,84 @@ async def simulate_demo_conflict(db: AsyncSession = Depends(get_db)):
     }
     await manager.broadcast("conflict_detected", payload)
     return payload
+
+
+@router.get("/github/status")
+async def github_status():
+    """Whether real GitHub integration is configured, and which repo it points to."""
+    from app.core.config import settings
+    return {
+        "configured": GitHubIntegrationAgent.is_configured(),
+        "repo": f"{settings.GITHUB_REPO_OWNER}/{settings.GITHUB_REPO_NAME}" if GitHubIntegrationAgent.is_configured() else None,
+    }
+
+
+@router.post("/github/sync")
+async def github_sync(db: AsyncSession = Depends(get_db)):
+    """
+    Phase A — Real GitHub Integration.
+    Fetches LIVE open Pull Requests from a real repository, and detects
+    real conflicts two ways:
+      - GitHub-confirmed ('dirty' mergeable_state)
+      - Predicted (2+ open PRs touching the same file)
+    No simulated data — every developer name, file, and risk signal here
+    comes from the actual repository.
+    """
+    result = await GitHubIntegrationAgent.fetch_open_pull_requests()
+    if not result["connected"]:
+        return {"synced": False, "error": result["error"], "conflicts_found": 0}
+
+    found_conflicts = GitHubIntegrationAgent.find_real_conflicts(result["pull_requests"])
+    created = []
+    skipped_duplicates = 0
+
+    for fc in found_conflicts:
+        # Deduplicate: don't create a repeat conflict card every time "Sync" is
+        # clicked for the same still-open PR pairing.
+        existing_stmt = select(ConflictEvent).where(
+            ConflictEvent.source == "github",
+            ConflictEvent.file_path == fc["file_path"],
+            ConflictEvent.function_name == fc["function_name"],
+            ConflictEvent.status == "predicted",
+        )
+        existing = (await db.execute(existing_stmt)).scalars().first()
+        if existing:
+            skipped_duplicates += 1
+            continue
+
+        dev_a = await CodeWatchAgent.get_or_create_developer(db, fc["dev_a"], avatar_color="#4F8CFF")
+        dev_b = await CodeWatchAgent.get_or_create_developer(db, fc["dev_b"], avatar_color="#FF6B6B")
+
+        event = await ConflictPredictionAgent.create_conflict_event(
+            db,
+            file_path=fc["file_path"],
+            function_name=fc["function_name"],
+            dev_a_id=dev_a.id,
+            dev_b_id=dev_b.id,
+            risk_score=fc["risk_score"],
+            source="github",
+            source_url=fc["source_url"],
+        )
+        created.append(event.id)
+
+        await CoordinatorAgent.log_decision(
+            db=db,
+            agent_name="GitHub Integration Agent",
+            module="dev_collab",
+            decision_summary=f"{'Confirmed' if fc['type']=='confirmed' else 'Predicted'} conflict in {fc['file_path']} "
+                              f"between {fc['dev_a']} and {fc['dev_b']} (from real GitHub data).",
+            used_llm=False,
+        )
+
+        await manager.broadcast("conflict_detected", {
+            "conflict_id": event.id, "file_path": fc["file_path"], "function_name": fc["function_name"],
+            "dev_a": fc["dev_a"], "dev_b": fc["dev_b"], "risk_score": fc["risk_score"], "source": "github",
+        })
+
+    return {
+        "synced": True,
+        "pull_requests_checked": len(result["pull_requests"]),
+        "conflicts_found": len(created),
+        "conflicts_already_known": skipped_duplicates,
+        "conflict_ids": created,
+    }

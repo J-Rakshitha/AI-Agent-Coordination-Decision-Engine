@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { GitBranch, AlertTriangle, Sparkles, Loader2, RefreshCw, GitCommit } from "lucide-react";
+import { GitBranch, AlertTriangle, Sparkles, Loader2, RefreshCw, GitCommit, Github, ExternalLink } from "lucide-react";
 import {
   getActiveSessions,
   listConflicts,
   simulateDemoConflict,
   suggestResolution,
   listCommits,
+  githubStatus,
+  githubSync,
 } from "../services/apiClient";
 import { useLiveSocketContext } from "../context/LiveSocketContext";
 import DecisionTrail from "../components/common/DecisionTrail";
@@ -25,6 +27,9 @@ export default function DevCollabPage() {
   const [error, setError] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [suggestingId, setSuggestingId] = useState(null);
+  const [github, setGithub] = useState({ configured: false, repo: null });
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
   const { lastEvent } = useLiveSocketContext();
 
   const loadData = useCallback(() => {
@@ -40,6 +45,7 @@ export default function DevCollabPage() {
 
   useEffect(() => {
     loadData();
+    githubStatus().then((res) => setGithub(res.data)).catch(() => {});
   }, [loadData]);
 
   useEffect(() => {
@@ -60,6 +66,28 @@ export default function DevCollabPage() {
     }
   }
 
+  async function handleGithubSync() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await githubSync();
+      setSyncResult(res.data);
+      loadData();
+    } catch (err) {
+      let message = "Unknown error.";
+      if (err.code === "ECONNABORTED") {
+        message = "Timed out — GitHub is taking a while to respond (try again, or check your connection).";
+      } else if (err.response?.data?.detail) {
+        message = err.response.data.detail;
+      } else if (err.message) {
+        message = err.message;
+      }
+      setSyncResult({ synced: false, error: message });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function handleSuggest(conflictId) {
     setSuggestingId(conflictId);
     try {
@@ -75,6 +103,47 @@ export default function DevCollabPage() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-6">
       <div className="lg:col-span-2 space-y-4">
+
+        {/* Real GitHub Integration panel */}
+        <div className="bg-base-surface border border-base-border rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-ink-primary flex items-center gap-2">
+              <Github size={16} className="text-ink-primary" />
+              Real GitHub Integration
+            </h2>
+            <button
+              onClick={handleGithubSync}
+              disabled={syncing || !github.configured}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-ink-primary/10 text-ink-primary border border-base-border hover:bg-ink-primary/20 transition-colors disabled:opacity-50"
+            >
+              {syncing ? <Loader2 size={13} className="animate-spin" /> : <Github size={13} />}
+              Sync with GitHub
+            </button>
+          </div>
+
+          {github.configured ? (
+            <p className="text-xs text-ink-faint mb-2">
+              Connected to real repository: <span className="font-mono text-ink-secondary">{github.repo}</span>.
+              This reads live open Pull Requests — no simulated data.
+            </p>
+          ) : (
+            <p className="text-xs text-ink-muted mb-2">
+              Not connected yet. Add <span className="font-mono">GITHUB_TOKEN</span>,{" "}
+              <span className="font-mono">GITHUB_REPO_OWNER</span> and <span className="font-mono">GITHUB_REPO_NAME</span> to
+              your backend <span className="font-mono">.env</span> file, then restart the server.
+            </p>
+          )}
+
+          {syncResult && (
+            <div className={`text-xs rounded-lg px-3 py-2 mt-2 ${syncResult.synced ? "bg-accent-success/10 text-accent-success" : "bg-accent-warning/10 text-accent-warning"}`}>
+              {syncResult.synced
+                ? `Checked ${syncResult.pull_requests_checked} open PR(s) — found ${syncResult.conflicts_found} new conflict(s)` +
+                  (syncResult.conflicts_already_known ? `, ${syncResult.conflicts_already_known} already known.` : ".")
+                : `Could not sync: ${syncResult.error}`}
+            </div>
+          )}
+        </div>
+
         <div className="bg-base-surface border border-base-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-ink-primary flex items-center gap-2">
@@ -108,8 +177,8 @@ export default function DevCollabPage() {
 
           {!error && sessions.length === 0 && (
             <p className="text-xs text-ink-muted">
-              No active edit sessions. Click <span className="text-accent-devcollab">Simulate Conflict</span> to
-              generate a realistic two-developer overlap scenario.
+              No active edit sessions. Click <span className="text-accent-devcollab">Simulate Conflict</span> for a demo
+              scenario, or <span className="text-ink-primary">Sync with GitHub</span> above for real repo data.
             </p>
           )}
 
@@ -149,13 +218,20 @@ export default function DevCollabPage() {
                   <span className="text-ink-primary font-medium">
                     {c.dev_a} <span className="text-ink-faint">&</span> {c.dev_b}
                   </span>
-                  <span
-                    className={`uppercase tracking-wide text-[10px] px-2 py-0.5 rounded-full ${
-                      c.status === "resolved" ? "bg-accent-success/15 text-accent-success" : "bg-accent-warning/15 text-accent-warning"
-                    }`}
-                  >
-                    {c.status}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {c.source === "github" && (
+                      <span className="flex items-center gap-1 uppercase tracking-wide text-[10px] px-2 py-0.5 rounded-full bg-ink-primary/10 text-ink-primary">
+                        <Github size={10} /> Real
+                      </span>
+                    )}
+                    <span
+                      className={`uppercase tracking-wide text-[10px] px-2 py-0.5 rounded-full ${
+                        c.status === "resolved" ? "bg-accent-success/15 text-accent-success" : "bg-accent-warning/15 text-accent-warning"
+                      }`}
+                    >
+                      {c.status}
+                    </span>
+                  </div>
                 </div>
                 <p className="text-xs text-ink-muted font-mono mb-2">
                   {c.file_path} → {c.function_name}
@@ -167,6 +243,17 @@ export default function DevCollabPage() {
                   </div>
                   <span className="text-[10px] text-ink-muted w-10 text-right">{c.risk_score}%</span>
                 </div>
+
+                {c.source_url && (
+                  <a
+                    href={c.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[11px] text-accent-devcollab hover:underline mb-2"
+                  >
+                    <ExternalLink size={11} /> View on GitHub
+                  </a>
+                )}
 
                 {c.ai_suggestion ? (
                   <p className="text-xs text-ink-secondary leading-relaxed border-l-2 border-accent-devcollab pl-2 mt-2">

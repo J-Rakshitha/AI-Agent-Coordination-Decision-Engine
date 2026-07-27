@@ -18,6 +18,8 @@ export const suggestResolution = (conflictId) =>
   apiClient.post(`/api/dev-collab/conflicts/${conflictId}/suggest-resolution`);
 export const simulateDemoConflict = () => apiClient.post("/api/dev-collab/simulate-demo-conflict");
 export const listCommits = () => apiClient.get("/api/dev-collab/commits");
+export const githubStatus = () => apiClient.get("/api/dev-collab/github/status");
+export const githubSync = () => apiClient.post("/api/dev-collab/github/sync", null, { timeout: 45000 });
 
 // ---------- AIOps ----------
 export const ingestMetrics = (payload) => apiClient.post("/api/incidents/ingest-metrics", payload);
