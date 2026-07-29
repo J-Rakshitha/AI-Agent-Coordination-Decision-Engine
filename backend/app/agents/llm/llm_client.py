@@ -13,7 +13,7 @@ import asyncio
 import logging
 from typing import Optional
 
-from app.core.config import settings
+from app.core.config import settings, is_llm_key_valid
 
 logger = logging.getLogger("hybrid_ai_client")
 
@@ -47,8 +47,8 @@ class HybridAIClient:
         if cls._configured:
             return
         cls._configured = True
-        if not settings.LLM_ENABLED or not settings.GEMINI_API_KEY:
-            logger.warning("LLM disabled or no API key set — running in rule-based-only mode.")
+        if not settings.LLM_ENABLED or not is_llm_key_valid():
+            logger.info("LLM disabled or no valid API key — running in rule-based-only mode.")
             return
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI

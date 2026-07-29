@@ -1,0 +1,8 @@
+# Start the React frontend
+Set-Location $PSScriptRoot
+if (-not (Test-Path "node_modules")) {
+    Write-Host "Installing npm packages..."
+    npm install
+}
+Write-Host "Starting frontend on http://localhost:5173 ..."
+npm run dev

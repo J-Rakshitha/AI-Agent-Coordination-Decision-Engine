@@ -15,14 +15,26 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import init_db
+from app.services.seed_users import seed_demo_users
+from app.services.monitoring_scheduler import start_monitoring, stop_monitoring
 
 # Import models so SQLAlchemy's metadata knows about every table before create_all()
 from app.models import dev_collab  # noqa: F401
 from app.models import incident  # noqa: F401
 from app.models import memory  # noqa: F401
 from app.models import tool_execution  # noqa: F401
+from app.models import monitoring  # noqa: F401
+from app.models import user  # noqa: F401
 
-from app.routers import dev_collab_routes, incident_routes, system_routes, websocket_routes, tool_routes
+from app.routers import (
+    auth_routes,
+    dev_collab_routes,
+    incident_routes,
+    monitoring_routes,
+    system_routes,
+    websocket_routes,
+    tool_routes,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
@@ -32,7 +44,10 @@ logger = logging.getLogger("main")
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} ({settings.ENV})")
     await init_db()
+    await seed_demo_users()
+    await start_monitoring()
     yield
+    await stop_monitoring()
     logger.info("Shutting down.")
 
 
@@ -54,8 +69,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_routes.router)
 app.include_router(dev_collab_routes.router)
 app.include_router(incident_routes.router)
+app.include_router(monitoring_routes.router)
 app.include_router(system_routes.router)
 app.include_router(websocket_routes.router)
 app.include_router(tool_routes.router)
@@ -67,4 +84,12 @@ async def root():
         "message": f"{settings.APP_NAME} is running.",
         "docs": "/docs",
         "modules": ["dev-collaboration", "aiops-incident-response"],
+        "phases": {
+            "A": "real-github-integration",
+            "B": "background-server-monitoring",
+            "C": "multi-user-login",
+            "D": "mcp-tool-layer",
+        },
+        "monitoring_enabled": settings.MONITORING_ENABLED,
+        "mcp": "python -m app.mcp_server",
     }

@@ -10,6 +10,7 @@ import os
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test_coordination_engine.db"
 os.environ["LLM_ENABLED"] = "False"
+os.environ["MONITORING_ENABLED"] = "False"
 
 import pytest
 import pytest_asyncio
@@ -17,9 +18,10 @@ from httpx import AsyncClient, ASGITransport
 
 from app.main import app
 from app.core.database import engine, Base
+from app.services.seed_users import seed_demo_users
 
 # Import all models so Base.metadata knows about every table.
-from app.models import dev_collab, incident, memory, tool_execution  # noqa: F401
+from app.models import dev_collab, incident, memory, tool_execution, monitoring, user  # noqa: F401
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -28,6 +30,7 @@ async def _reset_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+    await seed_demo_users()
     yield
 
 

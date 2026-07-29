@@ -8,6 +8,23 @@ const apiClient = axios.create({
   timeout: 10000,
 });
 
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem("coordination_engine_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ---------- Auth (Phase C) ----------
+export const login = (payload) => apiClient.post("/api/auth/login", payload);
+export const register = (payload) => apiClient.post("/api/auth/register", payload);
+export const getMe = () => apiClient.get("/api/auth/me");
+export const listUsers = () => apiClient.get("/api/auth/users");
+
+// ---------- Monitoring (Phase B — API only, no UI change) ----------
+export const getMonitoringStatus = () => apiClient.get("/api/monitoring/status");
+
 // ---------- Dev-Collaboration ----------
 export const startEditSession = (payload) => apiClient.post("/api/dev-collab/edit-session/start", payload);
 export const endEditSession = (sessionId) => apiClient.post(`/api/dev-collab/edit-session/${sessionId}/end`);

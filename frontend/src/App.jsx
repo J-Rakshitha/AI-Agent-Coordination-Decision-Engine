@@ -1,6 +1,7 @@
 import React from "react";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
+import { AuthProvider } from "./context/AuthContext";
 import { LiveSocketProvider, useLiveSocketContext } from "./context/LiveSocketContext";
 import Header from "./components/layout/Header";
 
@@ -28,11 +29,13 @@ function AppShell() {
 export default function App() {
   return (
     <ThemeProvider>
-      <LiveSocketProvider>
-        <HashRouter>
-          <AppShell />
-        </HashRouter>
-      </LiveSocketProvider>
+      <AuthProvider>
+        <LiveSocketProvider>
+          <HashRouter>
+            <AppShell />
+          </HashRouter>
+        </LiveSocketProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

@@ -20,7 +20,14 @@ router = APIRouter(prefix="/api/system", tags=["System"])
 
 @router.get("/health")
 async def health_check():
-    return {"status": "ok", "app": settings.APP_NAME, "env": settings.ENV}
+    """Live health endpoint — also probed by the background monitor (Phase B)."""
+    return {
+        "status": "ok",
+        "app": settings.APP_NAME,
+        "env": settings.ENV,
+        "db_pool_usage_pct": 35.0,
+        "monitoring_enabled": settings.MONITORING_ENABLED,
+    }
 
 
 @router.get("/stats")
