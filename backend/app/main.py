@@ -25,6 +25,7 @@ from app.models import memory  # noqa: F401
 from app.models import tool_execution  # noqa: F401
 from app.models import monitoring  # noqa: F401
 from app.models import user  # noqa: F401
+from app.models import notification  # noqa: F401
 
 from app.routers import (
     auth_routes,

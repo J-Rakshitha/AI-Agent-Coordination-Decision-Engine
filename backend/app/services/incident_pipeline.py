@@ -14,6 +14,7 @@ from app.agents.aiops.severity_agent import SeverityAgent
 from app.agents.aiops.escalation_agent import EscalationAgent
 from app.agents.aiops.external_lookup_agent import ExternalLookupAgent
 from app.agents.coordinator_agent import CoordinatorAgent
+from app.agents.notification_agent import NotificationAgent
 from app.agents.tools.tool_executor_agent import ToolExecutorAgent
 from app.agents.tools import tool_handlers  # noqa: F401
 
@@ -36,6 +37,20 @@ async def run_incident_pipeline(db: AsyncSession, metrics: dict) -> dict:
     await db.commit()
     await db.refresh(incident)
 
+    await CoordinatorAgent.log_decision(
+        db=db,
+        agent_name="Monitoring Agent",
+        module="aiops",
+        decision_summary=(
+            f"Anomaly detected on {anomaly['service_name']}: "
+            f"{anomaly['error_signature']} "
+            f"(error_rate={anomaly['error_rate_pct']}%, "
+            f"affected_users={anomaly['affected_users_pct']}%)"
+        ),
+        used_llm=False,
+        related_entity_id=incident.id,
+    )
+
     root_cause_result = await RootCauseAgent.analyze(
         db, anomaly["service_name"], anomaly["error_signature"], anomaly["raw_metrics"]
     )
@@ -57,6 +72,18 @@ async def run_incident_pipeline(db: AsyncSession, metrics: dict) -> dict:
 
     severity = SeverityAgent.classify(anomaly["error_rate_pct"], anomaly["affected_users_pct"])
     incident.severity = severity
+
+    await CoordinatorAgent.log_decision(
+        db=db,
+        agent_name="Severity Agent",
+        module="aiops",
+        decision_summary=(
+            f"Classified incident on {anomaly['service_name']} as {severity} "
+            f"(SLA: {SeverityAgent.sla_minutes_for(severity)} min)"
+        ),
+        used_llm=False,
+        related_entity_id=incident.id,
+    )
 
     situation = f"Incident on {anomaly['service_name']}, severity {severity}: {root_cause_result['root_cause']}"
     tool_result = await ToolExecutorAgent.select_and_execute(
@@ -93,6 +120,26 @@ async def run_incident_pipeline(db: AsyncSession, metrics: dict) -> dict:
             "message": linked_commit.message,
             "had_conflict": linked_commit.had_conflict,
         }
+        await CoordinatorAgent.log_decision(
+            db=db,
+            agent_name="Coordinator Agent",
+            module="aiops",
+            decision_summary=(
+                f"Linked incident #{incident.id} to commit {linked_commit.commit_hash} "
+                f"({linked_commit.file_path}) — cross-module Dev→Production correlation."
+            ),
+            used_llm=False,
+            related_entity_id=incident.id,
+        )
+
+    await NotificationAgent.notify_incident_created(
+        db,
+        incident_id=incident.id,
+        service_name=anomaly["service_name"],
+        severity=severity,
+        root_cause=incident.root_cause or "",
+        status=incident.status,
+    )
 
     return {
         "anomaly_detected": True,

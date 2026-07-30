@@ -41,3 +41,31 @@ def fallback_remediation_action(root_cause_hint: str) -> str:
     if "memory" in root_cause_hint.lower():
         return "clear_cache"
     return "notify_oncall_engineer"
+
+
+def fallback_code_review(
+    file_path: str,
+    function_name: str | None,
+    dev_a: str,
+    dev_b: str,
+    risk_score: float,
+) -> str:
+    fn = function_name or "the file"
+    tips = []
+    if file_path.endswith(".py"):
+        tips.append("Use snake_case for functions and add type hints to public APIs.")
+    elif file_path.endswith(".js"):
+        tips.append("Prefer const/let over var and keep functions under 50 lines.")
+    else:
+        tips.append("Follow the project's style guide before merging overlapping edits.")
+
+    if risk_score >= 70:
+        tips.append(
+            f"High overlap risk ({risk_score}%): {dev_a} and {dev_b} should pair-review "
+            f"changes in '{fn}' before either pushes."
+        )
+    else:
+        tips.append(f"{dev_a} and {dev_b} should sync on '{fn}' in {file_path} to avoid losing work.")
+
+    tips.append("Add or update unit tests for the modified function.")
+    return " ".join(tips)

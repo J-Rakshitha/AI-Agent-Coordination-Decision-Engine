@@ -13,6 +13,7 @@ from sqlalchemy import select, func, Integer
 
 from app.agents.tools.tool_registry import get_tool
 from app.agents.tools.tool_selector_agent import ToolSelectorAgent
+from app.agents.coordinator_agent import CoordinatorAgent
 from app.models.tool_execution import ToolExecutionLog
 
 
@@ -50,6 +51,18 @@ class ToolExecutorAgent:
         db.add(log)
         await db.commit()
         await db.refresh(log)
+
+        await CoordinatorAgent.log_decision(
+            db=db,
+            agent_name="Tool Executor Agent",
+            module="aiops",
+            decision_summary=(
+                f"Executed tool '{tool_name}' — "
+                f"{'succeeded' if success else 'failed'}"
+                + (f": {error}" if error else "")
+            ),
+            used_llm=selection["used_llm"],
+        )
 
         return {
             "tool_name": tool_name,

@@ -16,8 +16,10 @@ from app.models.dev_collab import Developer, ConflictEvent, CommitLog
 from app.agents.dev_collab.code_watch_agent import CodeWatchAgent
 from app.agents.dev_collab.conflict_prediction_agent import OverlapDetectionAgent, ConflictPredictionAgent
 from app.agents.dev_collab.resolution_suggestion_agent import ResolutionSuggestionAgent
+from app.agents.dev_collab.code_review_agent import CodeReviewAgent
 from app.agents.dev_collab.github_integration_agent import GitHubIntegrationAgent
 from app.agents.coordinator_agent import CoordinatorAgent
+from app.agents.notification_agent import NotificationAgent
 from app.services.synthetic_data_generator import random_edit_event
 from app.routers.websocket_routes import manager
 
@@ -32,6 +34,35 @@ DEMO_DEV_NAMES = [
     ("Sneha Reddy", "#3ECF8E"),
     ("Karthik Rao", "#F5A623"),
 ]
+
+
+async def _enrich_and_notify_conflict(
+    db: AsyncSession,
+    event: ConflictEvent,
+    dev_a_name: str,
+    dev_b_name: str,
+    risk_score: float,
+) -> dict:
+    """Pipeline step: Code Review Agent → persist notes → Notification Agent."""
+    review = await CodeReviewAgent.review(
+        db, event.file_path, event.function_name or "", dev_a_name, dev_b_name, risk_score
+    )
+    event.code_review_notes = review["review"]
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+
+    await NotificationAgent.notify_conflict_detected(
+        db,
+        conflict_id=event.id,
+        file_path=event.file_path,
+        function_name=event.function_name,
+        dev_a=dev_a_name,
+        dev_b=dev_b_name,
+        risk_score=risk_score,
+        code_review=review["review"],
+    )
+    return review
 
 
 @router.post("/edit-session/start")
@@ -106,12 +137,28 @@ async def check_conflicts(db: AsyncSession = Depends(get_db)):
 
         dev_a = await db.get(Developer, overlap["dev_a_id"])
         dev_b = await db.get(Developer, overlap["dev_b_id"])
+        dev_a_name = dev_a.name if dev_a else "Dev A"
+        dev_b_name = dev_b.name if dev_b else "Dev B"
+        await CoordinatorAgent.log_decision(
+            db=db,
+            agent_name="Conflict Prediction Agent",
+            module="dev_collab",
+            decision_summary=(
+                f"Predicted conflict risk {risk_score}% in {event.file_path} "
+                f"({event.function_name}) between {dev_a_name} and {dev_b_name}"
+            ),
+            used_llm=False,
+            related_entity_id=event.id,
+        )
+
+        await _enrich_and_notify_conflict(db, event, dev_a_name, dev_b_name, risk_score)
+
         await manager.broadcast("conflict_detected", {
             "conflict_id": event.id,
             "file_path": event.file_path,
             "function_name": event.function_name,
-            "dev_a": dev_a.name if dev_a else "Unknown",
-            "dev_b": dev_b.name if dev_b else "Unknown",
+            "dev_a": dev_a_name,
+            "dev_b": dev_b_name,
             "risk_score": risk_score,
         })
 
@@ -139,6 +186,7 @@ async def list_conflicts(db: AsyncSession = Depends(get_db)):
             "source": c.source,
             "source_url": c.source_url,
             "ai_suggestion": c.ai_suggestion,
+            "code_review_notes": c.code_review_notes,
             "created_at": c.created_at,
         })
     return output
@@ -178,6 +226,15 @@ async def suggest_resolution(conflict_id: int, db: AsyncSession = Depends(get_db
     )
     db.add(commit)
     await db.commit()
+
+    await NotificationAgent.notify_conflict_resolved(
+        db,
+        conflict_id=conflict.id,
+        file_path=conflict.file_path,
+        suggestion=result["suggestion"],
+        dev_a=dev_a_name,
+        dev_b=dev_b_name,
+    )
 
     await manager.broadcast("conflict_resolved", {
         "conflict_id": conflict.id, "suggestion": result["suggestion"], "used_llm": result["used_llm"],
@@ -227,6 +284,20 @@ async def simulate_demo_conflict(db: AsyncSession = Depends(get_db)):
     conflict = await ConflictPredictionAgent.create_conflict_event(
         db, edit_event["file_path"], edit_event["function_name"], dev_a.id, dev_b.id, risk_score
     )
+
+    await CoordinatorAgent.log_decision(
+        db=db,
+        agent_name="Conflict Prediction Agent",
+        module="dev_collab",
+        decision_summary=(
+            f"Demo conflict predicted: risk {risk_score}% in {edit_event['file_path']} "
+            f"({edit_event['function_name']}) between {dev_a_name} and {dev_b_name}"
+        ),
+        used_llm=False,
+        related_entity_id=conflict.id,
+    )
+
+    await _enrich_and_notify_conflict(db, conflict, dev_a_name, dev_b_name, risk_score)
 
     payload = {
         "conflict_id": conflict.id,
@@ -305,7 +376,10 @@ async def github_sync(db: AsyncSession = Depends(get_db)):
             decision_summary=f"{'Confirmed' if fc['type']=='confirmed' else 'Predicted'} conflict in {fc['file_path']} "
                               f"between {fc['dev_a']} and {fc['dev_b']} (from real GitHub data).",
             used_llm=False,
+            related_entity_id=event.id,
         )
+
+        await _enrich_and_notify_conflict(db, event, fc["dev_a"], fc["dev_b"], fc["risk_score"])
 
         await manager.broadcast("conflict_detected", {
             "conflict_id": event.id, "file_path": fc["file_path"], "function_name": fc["function_name"],

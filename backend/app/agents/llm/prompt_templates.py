@@ -23,9 +23,18 @@ CONFLICT_RESOLUTION_PROMPT = ChatPromptTemplate.from_template(
     "In 2 short sentences, suggest how they should coordinate to avoid losing each other's work."
 )
 
+CODE_REVIEW_PROMPT = ChatPromptTemplate.from_template(
+    "Two developers, {dev_a_name} and {dev_b_name}, are editing '{function_name}' in "
+    "'{file_path}' with a {risk_score}% merge-conflict risk."
+    "{memory_context}\n"
+    "In 2 short sentences, flag code-quality or style concerns they should address "
+    "before merging (naming, tests, complexity)."
+)
+
 TOOL_SELECTION_PROMPT = ChatPromptTemplate.from_template(
     "You are selecting the single best tool to handle this situation.\n"
-    "Situation: {situation}\n\n"
+    "Situation: {situation}\n"
+    "{memory_context}\n\n"
     "Available tools:\n{tool_descriptions}\n\n"
     "Reply with ONLY the exact tool name from the list above, nothing else."
 )

@@ -6,15 +6,14 @@ real run, or a real metrics pipeline in production) and flags anomalies
 using simple, fast, rule-based thresholds. This agent deliberately does NOT
 use the LLM — anomaly detection on numeric thresholds should be instant and
 100% deterministic, not dependent on an API call.
+
+Thresholds are loaded from environment-backed settings (config.py), not
+hardcoded here, so ops teams can tune them per environment.
 """
+from app.core.config import settings
 
 
 class MonitoringAgent:
-
-    # Thresholds — in a production system these would be per-service/tunable
-    RESPONSE_TIME_MS_THRESHOLD = 1500
-    ERROR_RATE_PCT_THRESHOLD = 10
-    DB_POOL_USAGE_PCT_THRESHOLD = 85
 
     @classmethod
     def detect_anomaly(cls, metrics: dict) -> dict | None:
@@ -30,11 +29,11 @@ class MonitoringAgent:
         Returns an anomaly dict if any threshold is breached, else None.
         """
         reasons = []
-        if metrics.get("response_time_ms", 0) > cls.RESPONSE_TIME_MS_THRESHOLD:
+        if metrics.get("response_time_ms", 0) > settings.MONITORING_RESPONSE_TIME_MS_THRESHOLD:
             reasons.append("high_response_time")
-        if metrics.get("error_rate_pct", 0) > cls.ERROR_RATE_PCT_THRESHOLD:
+        if metrics.get("error_rate_pct", 0) > settings.MONITORING_ERROR_RATE_PCT_THRESHOLD:
             reasons.append("high_error_rate")
-        if metrics.get("db_pool_usage_pct", 0) > cls.DB_POOL_USAGE_PCT_THRESHOLD:
+        if metrics.get("db_pool_usage_pct", 0) > settings.MONITORING_DB_POOL_USAGE_PCT_THRESHOLD:
             reasons.append("connection_pool")
 
         if not reasons:

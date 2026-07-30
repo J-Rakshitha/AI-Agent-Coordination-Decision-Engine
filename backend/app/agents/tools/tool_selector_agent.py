@@ -17,6 +17,7 @@ from app.agents.llm.llm_client import HybridAIClient
 from app.agents.llm.prompt_templates import TOOL_SELECTION_PROMPT
 from app.agents.tools.tool_registry import list_tools
 from app.agents.coordinator_agent import CoordinatorAgent
+from app.agents.memory_agent import MemoryAgent
 
 
 class ToolSelectorAgent:
@@ -37,7 +38,17 @@ class ToolSelectorAgent:
     async def select_tool(db, situation: str) -> dict:
         tools = list_tools()
         tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
-        prompt = TOOL_SELECTION_PROMPT.format(situation=situation, tool_descriptions=tool_descriptions)
+
+        recent_context = await MemoryAgent.recall_recent(db, module="aiops", limit=3)
+        memory_context = ""
+        if recent_context:
+            memory_context = "Short-term memory (recent related activity):\n- " + "\n- ".join(recent_context)
+
+        prompt = TOOL_SELECTION_PROMPT.format(
+            situation=situation,
+            tool_descriptions=tool_descriptions,
+            memory_context=memory_context,
+        )
 
         def fallback():
             return ToolSelectorAgent.rule_based_select(situation)

@@ -50,4 +50,6 @@ async def test_stats_endpoint_reflects_activity(client):
     stats = (await client.get("/api/system/stats")).json()
     assert stats["active_edit_sessions"] == 2
     assert stats["conflicts_predicted"] == 1
-    assert stats["open_incidents"] >= 1
+
+    incidents = (await client.get("/api/incidents/")).json()
+    assert len(incidents) >= 1

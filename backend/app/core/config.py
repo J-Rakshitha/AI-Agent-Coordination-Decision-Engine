@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     GITHUB_REPO_OWNER: str = "J-Rakshitha"
     GITHUB_REPO_NAME: str = "dev-collab-test-repo"
 
+    # Anomaly detection thresholds (configurable per environment — not hardcoded in agents)
+    MONITORING_RESPONSE_TIME_MS_THRESHOLD: int = 1500
+    MONITORING_ERROR_RATE_PCT_THRESHOLD: int = 10
+    MONITORING_DB_POOL_USAGE_PCT_THRESHOLD: int = 85
+
     # Phase B — Real Server Monitoring (background HTTP probes)
     MONITORING_ENABLED: bool = True
     MONITOR_INTERVAL_SECONDS: int = 30
@@ -45,6 +50,15 @@ class Settings(BaseSettings):
 
     # Phase C — Multi-user Login (JWT)
     AUTH_SECRET_KEY: str = "change-me-in-production-use-a-long-random-string"
+
+    # Notification Agent — team alerts (WebSocket + email)
+    NOTIFICATION_EMAIL_ENABLED: bool = True
+    NOTIFICATION_FROM_EMAIL: str = "aiops@infosys.com"
+    NOTIFICATION_ONCALL_EMAIL: str = "oncall@infosys.com"
+    NOTIFICATION_SMTP_HOST: str = ""
+    NOTIFICATION_SMTP_PORT: int = 587
+    NOTIFICATION_SMTP_USER: str = ""
+    NOTIFICATION_SMTP_PASSWORD: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

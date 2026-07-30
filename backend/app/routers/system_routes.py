@@ -13,6 +13,7 @@ from app.models.incident import AgentDecisionLog, Incident
 from app.models.dev_collab import FileEditSession, ConflictEvent
 from app.agents.llm.llm_client import set_simulated_failure, get_simulated_failure
 from app.agents.memory_agent import MemoryAgent
+from app.agents.notification_agent import NotificationAgent
 from app.core.config import settings
 
 router = APIRouter(prefix="/api/system", tags=["System"])
@@ -67,6 +68,27 @@ async def get_knowledge_base(db: AsyncSession = Depends(get_db)):
             "last_used_at": e.last_used_at,
         }
         for e in entries
+    ]
+
+
+@router.get("/notifications")
+async def get_notifications(db: AsyncSession = Depends(get_db)):
+    """Team notification log — WebSocket + email delivery records from the Notification Agent."""
+    entries = await NotificationAgent.list_recent(db)
+    return [
+        {
+            "id": n.id,
+            "channel": n.channel,
+            "event_type": n.event_type,
+            "module": n.module,
+            "recipient": n.recipient,
+            "subject": n.subject,
+            "message": n.message,
+            "related_entity_id": n.related_entity_id,
+            "delivered": n.delivered,
+            "created_at": n.created_at,
+        }
+        for n in entries
     ]
 
 

@@ -46,6 +46,18 @@ to rule-based logic. The demo NEVER crashes.
 | **B** | Real Server Monitoring — background HTTP probes (own backend + external API) | ✅ Complete |
 | **C** | Multi-user Login — JWT auth with demo users | ✅ Complete |
 | **D** | MCP Layer — industry-standard tool exposure via Model Context Protocol | ✅ Complete |
+| **M3** | Agent Coordination & Memory — specialized agents, shared memory, cross-module linking | ✅ Complete |
+
+### Milestone 3 — Agent Coordination & Memory Systems (Weeks 5–6)
+- **Specialized agents** with distinct business roles across Dev-Collaboration and AIOps
+- **Code Review Agent** — flags code-quality/style risks when conflicts are predicted
+- **Notification Agent** — team alerts via WebSocket + email (simulated or real SMTP)
+- **Coordinator Agent** — explainable decision log + cross-module Dev→Production incident linking
+- **Short-term memory** — recent agent decisions (`AgentDecisionLog`) fed as context to reasoning agents
+- **Long-term memory** — persistent `KnowledgeEntry` store; agents recall past patterns before LLM/rules
+- **Agent communication** — orchestrated pipelines, WebSocket broadcasts, REST APIs for memory/decisions
+- Endpoints: `GET /api/system/decision-log`, `GET /api/system/knowledge-base`
+- Dashboard: **Agent Decision Trail** + **Shared Knowledge Base** panels on Overview page
 
 ### Phase A — Real GitHub Integration
 - Connects to a real GitHub repo via REST API
@@ -200,6 +212,7 @@ interfere with data you're using for a live demo.
 | GET | `/api/system/stats` | Dashboard stat cards |
 | GET | `/api/system/decision-log` | Explainable-AI trail |
 | GET | `/api/system/knowledge-base` | Long-term agent memory |
+| GET | `/api/system/notifications` | Team notification delivery log |
 | POST | `/api/system/toggle-llm-failure` | Force rule-based fallback |
 
 ### Phase A — GitHub
@@ -270,6 +283,7 @@ interfere with data you're using for a live demo.
 - [x] **Phase C — Multi-user Login (JWT)**
 - [x] **Phase D — MCP Tool Layer**
 - [x] Tool Integration (Milestone 2) — 5 enterprise tools + intelligent selection
+- [x] **Milestone 3 — Agent Coordination & Memory Systems**
 - [x] GitHub push — [repo live](https://github.com/J-Rakshitha/AI-Agent-Coordination-Decision-Engine)
 - [ ] Render/Vercel deployment
 - [ ] Final demo rehearsal
