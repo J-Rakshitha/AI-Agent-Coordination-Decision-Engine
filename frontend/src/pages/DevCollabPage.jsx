@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { GitBranch, AlertTriangle, Sparkles, Loader2, RefreshCw, GitCommit, Github, ExternalLink } from "lucide-react";
+import { GitBranch, AlertTriangle, Sparkles, Loader2, RefreshCw, GitCommit, Github, ExternalLink, FileSearch } from "lucide-react";
 import {
   getActiveSessions,
   listConflicts,
@@ -255,10 +255,28 @@ export default function DevCollabPage() {
                   </a>
                 )}
 
+                {c.code_review_notes && (
+                  <div className="mb-2 rounded-lg bg-accent-warning/5 border border-accent-warning/20 px-2.5 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-accent-warning font-medium mb-1 flex items-center gap-1">
+                      <FileSearch size={11} />
+                      Code Review Agent
+                    </p>
+                    <p className="text-xs text-ink-secondary leading-relaxed">
+                      {c.code_review_notes}
+                    </p>
+                  </div>
+                )}
+
                 {c.ai_suggestion ? (
-                  <p className="text-xs text-ink-secondary leading-relaxed border-l-2 border-accent-devcollab pl-2 mt-2">
-                    {c.ai_suggestion}
-                  </p>
+                  <div className="mt-2">
+                    <p className="text-[10px] uppercase tracking-wide text-accent-devcollab font-medium mb-1 flex items-center gap-1">
+                      <Sparkles size={11} />
+                      Resolution Suggestion Agent
+                    </p>
+                    <p className="text-xs text-ink-secondary leading-relaxed border-l-2 border-accent-devcollab pl-2">
+                      {c.ai_suggestion}
+                    </p>
+                  </div>
                 ) : (
                   <button
                     onClick={() => handleSuggest(c.id)}

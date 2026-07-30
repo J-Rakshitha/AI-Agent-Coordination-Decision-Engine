@@ -50,6 +50,7 @@ export const getKnowledgeBase = () => apiClient.get("/api/system/knowledge-base"
 export const toggleLlmFailure = (enabled) => apiClient.post(`/api/system/toggle-llm-failure?enabled=${enabled}`);
 export const getLlmFailureStatus = () => apiClient.get("/api/system/llm-failure-status");
 export const getDecisionLog = () => apiClient.get("/api/system/decision-log");
+export const getNotifications = () => apiClient.get("/api/system/notifications");
 
 // ---------- Tool Integration (Milestone 2) ----------
 export const listTools = () => apiClient.get("/api/tools/");

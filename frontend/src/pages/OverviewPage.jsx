@@ -3,6 +3,7 @@ import { GitBranch, ServerCog, Activity, Link2 } from "lucide-react";
 import StatCard from "../components/common/StatCard";
 import DecisionTrail from "../components/common/DecisionTrail";
 import KnowledgeBasePanel from "../components/common/KnowledgeBasePanel";
+import NotificationsPanel from "../components/common/NotificationsPanel";
 import { getStats } from "../services/apiClient";
 import { useLiveSocketContext } from "../context/LiveSocketContext";
 
@@ -62,6 +63,7 @@ export default function OverviewPage() {
         </div>
 
         <KnowledgeBasePanel />
+        <NotificationsPanel />
       </div>
 
       <div className="lg:col-span-1">
