@@ -29,7 +29,43 @@ Built for: Infosys Springboard Virtual Internship 7.0 — Batch 1.
          \                            /
           -----> Coordinator Agent <-----
              (explainable decision log,
-              cross-module linking)
+              cross-module linking,
+              shared memory)
+```
+
+```mermaid
+flowchart TB
+    subgraph DevCollab["Dev-Collaboration Module"]
+        OW[Overlap Detection] --> CP[Conflict Prediction]
+        CP --> CR[Code Review Agent]
+        CR --> NA1[Notification Agent]
+        CP --> RS[Resolution Suggestion]
+        RS --> NA2[Notification Agent]
+        GH[GitHub Integration Agent] --> CP
+    end
+
+    subgraph AIOps["AIOps Module"]
+        MO[Monitoring Agent] --> RC[Root-Cause Analysis]
+        RC --> SE[Severity Agent]
+        SE --> TS[Tool Selector]
+        TS --> TE[Tool Executor]
+        TE --> NA3[Notification Agent]
+        MO --> EL[External Lookup]
+    end
+
+    subgraph Core["Shared Core"]
+        CO[Coordinator Agent]
+        ME[Memory Agent]
+        DB[(SQLite DB)]
+        WS[WebSocket /ws/live]
+    end
+
+    DevCollab --> CO
+    AIOps --> CO
+    CO --> ME
+    ME --> DB
+    CO --> WS
+    CO -->|cross-module link| DevCollab
 ```
 
 **Hybrid AI strategy**: every "thinking" agent calls the Gemini API first.
@@ -102,22 +138,47 @@ Repeated patterns reinforce entries (`success_count` increments).
 | GET | `/api/system/knowledge-base` | Long-term memory entries |
 | GET | `/api/system/notifications` | Team notification delivery log |
 
-#### Dashboard Panels (Overview page)
+#### Dashboard — UI Panels (All Pages)
 
-- **Agent Decision Trail** — every agent action with LLM vs Rule-based badge
-- **Shared Knowledge Base** — long-term memory visualized with `seen N×` counts
-- **Stat cards** — Active Sessions, Conflicts, Open Incidents, **Linked Incidents**
+| Page | Panel | What it shows |
+|------|-------|---------------|
+| **Overview** | Stat cards | Active Sessions, Conflicts, Open Incidents, Linked Incidents |
+| **Overview** | Shared Knowledge Base | Long-term memory entries with `seen N×` reinforcement |
+| **Overview** | Team Notifications | Email/WebSocket alerts from Notification Agent (live refresh) |
+| **Overview** | Agent Decision Trail | Every agent decision — LLM vs Rule-based badge |
+| **Dev-Collaboration** | Live Editing Map | Real-time developer presence on files/functions |
+| **Dev-Collaboration** | Predicted Conflicts | Risk score bar + **Code Review Agent** box + Resolution suggestion |
+| **Dev-Collaboration** | Recent Commits | Auto-created when conflicts resolve — feeds cross-module linking |
+| **Dev-Collaboration** | Real GitHub Integration | Live PR sync from configured repo (not simulated) |
+| **AIOps** | Live Incident Feed | Severity, root cause, linked commit, escalation status |
+| **AIOps** | Tool Integration Panel | Registered tools + measured execution accuracy |
+| **All pages** | Header — Live indicator | Green dot = WebSocket connected (real-time) |
+| **All pages** | Header — Simulate API Failure | Toggle to prove hybrid LLM fallback live on stage |
+
+**Dev-Collaboration conflict card layout (after detection):**
+```
+┌─ Predicted Conflict ─────────────────────────────┐
+│  Dev A & Dev B  ·  file.py → function  ·  66%   │
+│  ┌─ Code Review Agent ─────────────────────────┐ │
+│  │  Style/quality advice from hybrid AI        │ │
+│  └────────────────────────────────────────────┘ │
+│  [Get AI Suggestion]                              │
+└──────────────────────────────────────────────────┘
+→ After resolution: Resolution Suggestion Agent text + RESOLVED badge
+```
 
 ### 5-Minute Live Demo Script (Milestone 3)
 
-| Step | Page | Action | What to show |
-|------|------|--------|--------------|
-| 1 | Overview | Open dashboard | Stat cards + Knowledge Base + Decision Trail |
-| 2 | Dev-Collaboration | **Simulate Conflict** | Conflict Prediction → Code Review → Notification agents |
-| 3 | Dev-Collaboration | **Get AI Suggestion** | Conflict RESOLVED + commit created |
-| 4 | AIOps | **Simulate Incident** | Monitoring → Root Cause → Severity → Tool → Notification |
-| 5 | Overview | Refresh | **Linked Incidents > 0** + Knowledge Base entries growing |
-| 6 | Header | Toggle **Simulate API Failure** ON → repeat Step 2 | Proves Rule-based fallback — system never crashes |
+**Recommended for evaluators:** use **GitHub Sync** (real data) instead of Simulate Conflict where possible.
+
+| Step | Page | Action | What to show in UI |
+|------|------|--------|---------------------|
+| 1 | Overview | Open dashboard | Stat cards + Knowledge Base + **Team Notifications** + Decision Trail |
+| 2 | Dev-Collaboration | **Sync with GitHub** (or Simulate Conflict) | Code Review box on conflict card + agents in Decision Trail |
+| 3 | Dev-Collaboration | **Get AI Suggestion** | RESOLVED badge + Resolution Suggestion text + Recent Commits entry |
+| 4 | AIOps | **Simulate Incident** (or wait 30s for background monitor) | P1/P2 card + Tool accuracy + full agent pipeline in Decision Trail |
+| 5 | Overview | Refresh (`Ctrl+Shift+R`) | **Linked Incidents > 0** + Knowledge Base growing + new notifications |
+| 6 | Header | Toggle **Simulate API Failure** ON → repeat Step 2 | Rule-based badge in Decision Trail — system never crashes |
 
 **Talking point for evaluators:**
 > "A Dev-Collab conflict on `payment_service.py` was later linked to a P1 production
@@ -136,6 +197,8 @@ Repeated patterns reinforce entries (`success_count` increments).
 | Hybrid LLM (Gemini) | ✅ Real when API key set | Rule-based fallback always available |
 | Short/long-term memory | ✅ Real DB-backed | |
 | Cross-module incident linking | ✅ Real correlation logic | |
+| Code Review Agent output on conflict cards | ✅ Real agent output in UI | |
+| Team Notifications panel (Overview) | ✅ Real DB records, live refresh | |
 | **Simulate Conflict** button | | ⚠️ Demo trigger (random file/function) |
 | **Simulate Incident** button | | ⚠️ Demo trigger (random metrics) |
 | Email notifications | ✅ Real if SMTP configured | Simulated log in DB by default |
@@ -228,9 +291,18 @@ ai-agent-coordination-engine/
 │   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/                          # Overview, DevCollab, AIOps
-│   │   ├── components/common/              # DecisionTrail, KnowledgeBasePanel, LoginModal
-│   │   └── context/                        # AuthContext, LiveSocketContext
+│   │   ├── pages/
+│   │   │   ├── OverviewPage.jsx            # Stats + Knowledge Base + Notifications
+│   │   │   ├── DevCollabPage.jsx           # Conflicts + Code Review + GitHub sync
+│   │   │   └── AIOpsPage.jsx               # Incidents + Tool Integration panel
+│   │   ├── components/common/
+│   │   │   ├── DecisionTrail.jsx           # Explainable-AI agent log
+│   │   │   ├── KnowledgeBasePanel.jsx      # Long-term memory visualization
+│   │   │   ├── NotificationsPanel.jsx      # Team alerts (WebSocket + email log)
+│   │   │   ├── ToolIntegrationPanel.jsx    # Tool registry + accuracy stats
+│   │   │   ├── LlmFailureToggle.jsx        # Hybrid AI fallback demo toggle
+│   │   │   └── LoginModal.jsx              # Phase C — JWT login
+│   │   └── context/                        # AuthContext, LiveSocketContext, ThemeContext
 │   ├── run.ps1                             # Windows one-click frontend start
 │   └── package.json
 └── README.md
@@ -240,6 +312,24 @@ ai-agent-coordination-engine/
 
 ## Setup & Run (Local)
 
+### Quick Start — Windows (2 terminals)
+
+**Terminal 1 — Backend:**
+```powershell
+cd backend
+.\run.ps1
+```
+
+**Terminal 2 — Frontend:**
+```powershell
+cd frontend
+.\run.ps1
+```
+
+Open **http://localhost:5173** — green **Live** dot in header confirms WebSocket connected.
+
+---
+
 ### 1. Backend (Port 8000)
 
 ```bash
@@ -247,11 +337,22 @@ cd backend
 cp .env.example .env
 ```
 
-Edit `backend/.env` — set your Gemini key on **line 17**:
+Edit `backend/.env` — key settings:
 
 ```env
-GEMINI_API_KEY=your_actual_key_here   # Get free key: https://aistudio.google.com/app/apikey
+# LLM — get free key at https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=your_actual_key_here
 LLM_ENABLED=True
+
+# GitHub — real PR conflict sync (Phase A)
+GITHUB_TOKEN=your_github_token_here
+GITHUB_REPO_OWNER=your-username
+GITHUB_REPO_NAME=your-repo-name
+
+# Notifications — optional real email (defaults to simulated log in DB)
+NOTIFICATION_EMAIL_ENABLED=True
+NOTIFICATION_SMTP_HOST=
+NOTIFICATION_ONCALL_EMAIL=oncall@infosys.com
 ```
 
 > **Never commit `.env`** — it is gitignored. Only commit `.env.example`.
@@ -317,6 +418,16 @@ del coordination_engine.db
 
 The backend recreates all tables automatically on startup.
 
+### Verify Everything Works
+
+| Check | URL / Action | Expected |
+|-------|-------------|----------|
+| Backend health | http://localhost:8000/api/system/health | `{"status":"ok"}` |
+| API docs | http://localhost:8000/docs | Swagger UI loads |
+| Dashboard | http://localhost:5173 | UI loads, green Live dot |
+| Notifications API | http://localhost:8000/api/system/notifications | JSON array |
+| Full test suite | `cd backend && python -m pytest -v` | **32 passed** |
+
 ---
 
 ## API Endpoints
@@ -358,7 +469,9 @@ The backend recreates all tables automatically on startup.
 | GET | `/api/dev-collab/active-sessions` | List live edit sessions |
 | POST | `/api/dev-collab/check-conflicts` | Run overlap + conflict-risk detection |
 | POST | `/api/dev-collab/simulate-demo-conflict` | One-click demo conflict scenario |
+| GET | `/api/dev-collab/conflicts` | List conflicts (includes `code_review_notes`) |
 | POST | `/api/dev-collab/conflicts/{id}/suggest-resolution` | Hybrid-AI resolution suggestion |
+| GET | `/api/dev-collab/commits` | Commit history (used for cross-module linking) |
 
 ### AIOps & Tools
 | Method | Path | Purpose |
@@ -384,6 +497,7 @@ The backend recreates all tables automatically on startup.
 | Workflow Automation Platform | Dev-Collab + AIOps end-to-end pipelines with Notification Agent |
 | Enterprise API Layer | FastAPI REST + WebSocket + MCP |
 | Agent Communication | Orchestrator + Pipeline + Shared DB blackboard (Milestone 3) |
+| Real-time Dashboard UI | WebSocket live updates + Notifications + Code Review panels |
 | Real-time Monitoring (Phase B) | Background scheduler + Server Monitor Agent |
 | Multi-user Access (Phase C) | JWT auth with role-based demo users |
 | LangChain configured | HybridAIClient via langchain_google_genai |
@@ -402,6 +516,7 @@ The backend recreates all tables automatically on startup.
 - [x] **Phase D — MCP Tool Layer**
 - [x] Tool Integration (Milestone 2) — 5 enterprise tools + intelligent selection
 - [x] **Milestone 3 — Agent Coordination & Memory Systems**
+- [x] Milestone 3 UI — Code Review on conflict cards + Team Notifications panel
 - [x] GitHub push — [repo live](https://github.com/J-Rakshitha/AI-Agent-Coordination-Decision-Engine)
 - [ ] Render/Vercel deployment
 - [ ] Final demo rehearsal
