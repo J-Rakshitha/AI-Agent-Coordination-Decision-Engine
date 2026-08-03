@@ -33,14 +33,17 @@ export const checkConflicts = () => apiClient.post("/api/dev-collab/check-confli
 export const listConflicts = () => apiClient.get("/api/dev-collab/conflicts");
 export const suggestResolution = (conflictId) =>
   apiClient.post(`/api/dev-collab/conflicts/${conflictId}/suggest-resolution`);
-export const simulateDemoConflict = () => apiClient.post("/api/dev-collab/simulate-demo-conflict");
+// LLM + Slack notifications can take 15–20s — use a longer timeout than default 10s
+export const simulateDemoConflict = () =>
+  apiClient.post("/api/dev-collab/simulate-demo-conflict", null, { timeout: 45000 });
 export const listCommits = () => apiClient.get("/api/dev-collab/commits");
 export const githubStatus = () => apiClient.get("/api/dev-collab/github/status");
 export const githubSync = () => apiClient.post("/api/dev-collab/github/sync", null, { timeout: 45000 });
 
 // ---------- AIOps ----------
 export const ingestMetrics = (payload) => apiClient.post("/api/incidents/ingest-metrics", payload);
-export const simulateIncident = () => apiClient.post("/api/incidents/simulate");
+export const simulateIncident = () =>
+  apiClient.post("/api/incidents/simulate", null, { timeout: 45000 });
 export const listIncidents = () => apiClient.get("/api/incidents/");
 
 // ---------- System ----------
@@ -51,6 +54,10 @@ export const toggleLlmFailure = (enabled) => apiClient.post(`/api/system/toggle-
 export const getLlmFailureStatus = () => apiClient.get("/api/system/llm-failure-status");
 export const getDecisionLog = () => apiClient.get("/api/system/decision-log");
 export const getNotifications = () => apiClient.get("/api/system/notifications");
+export const getIntegrations = () => apiClient.get("/api/system/integrations");
+export const testEmail = () => apiClient.post("/api/system/test-email");
+export const testDiscordWebhook = (url) =>
+  apiClient.post("/api/system/test-discord-webhook", url ? { url } : {});
 
 // ---------- Tool Integration (Milestone 2) ----------
 export const listTools = () => apiClient.get("/api/tools/");

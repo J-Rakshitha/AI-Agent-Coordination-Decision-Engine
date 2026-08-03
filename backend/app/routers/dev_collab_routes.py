@@ -6,7 +6,7 @@ import random
 import secrets
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -16,11 +16,13 @@ from app.models.dev_collab import Developer, ConflictEvent, CommitLog
 from app.agents.dev_collab.code_watch_agent import CodeWatchAgent
 from app.agents.dev_collab.conflict_prediction_agent import OverlapDetectionAgent, ConflictPredictionAgent
 from app.agents.dev_collab.resolution_suggestion_agent import ResolutionSuggestionAgent
-from app.agents.dev_collab.code_review_agent import CodeReviewAgent
 from app.agents.dev_collab.github_integration_agent import GitHubIntegrationAgent
 from app.agents.coordinator_agent import CoordinatorAgent
 from app.agents.notification_agent import NotificationAgent
 from app.services.synthetic_data_generator import random_edit_event
+from app.services.github_sync_service import enrich_and_notify_conflict, run_github_sync
+from app.services.github_webhook_service import GitHubWebhookService
+from app.core.config import settings
 from app.routers.websocket_routes import manager
 
 router = APIRouter(prefix="/api/dev-collab", tags=["Dev Collaboration"])
@@ -43,26 +45,7 @@ async def _enrich_and_notify_conflict(
     dev_b_name: str,
     risk_score: float,
 ) -> dict:
-    """Pipeline step: Code Review Agent → persist notes → Notification Agent."""
-    review = await CodeReviewAgent.review(
-        db, event.file_path, event.function_name or "", dev_a_name, dev_b_name, risk_score
-    )
-    event.code_review_notes = review["review"]
-    db.add(event)
-    await db.commit()
-    await db.refresh(event)
-
-    await NotificationAgent.notify_conflict_detected(
-        db,
-        conflict_id=event.id,
-        file_path=event.file_path,
-        function_name=event.function_name,
-        dev_a=dev_a_name,
-        dev_b=dev_b_name,
-        risk_score=risk_score,
-        code_review=review["review"],
-    )
-    return review
+    return await enrich_and_notify_conflict(db, event, dev_a_name, dev_b_name, risk_score)
 
 
 @router.post("/edit-session/start")
@@ -313,83 +296,62 @@ async def simulate_demo_conflict(db: AsyncSession = Depends(get_db)):
 
 @router.get("/github/status")
 async def github_status():
-    """Whether real GitHub integration is configured, and which repo it points to."""
-    from app.core.config import settings
+    """Whether real GitHub integration is configured, webhook URL, and which repo it points to."""
     return {
         "configured": GitHubIntegrationAgent.is_configured(),
         "repo": f"{settings.GITHUB_REPO_OWNER}/{settings.GITHUB_REPO_NAME}" if GitHubIntegrationAgent.is_configured() else None,
+        "webhook_url": GitHubWebhookService.webhook_url(),
+        "webhook_secret_configured": bool((settings.GITHUB_WEBHOOK_SECRET or "").strip()),
+        "webhook_events": ["pull_request"],
     }
 
 
 @router.post("/github/sync")
 async def github_sync(db: AsyncSession = Depends(get_db)):
     """
-    Phase A — Real GitHub Integration.
-    Fetches LIVE open Pull Requests from a real repository, and detects
-    real conflicts two ways:
-      - GitHub-confirmed ('dirty' mergeable_state)
-      - Predicted (2+ open PRs touching the same file)
-    No simulated data — every developer name, file, and risk signal here
-    comes from the actual repository.
+    Phase A — Real GitHub Integration (manual trigger).
+    Fetches LIVE open Pull Requests from a real repository.
     """
-    result = await GitHubIntegrationAgent.fetch_open_pull_requests()
-    if not result["connected"]:
-        return {"synced": False, "error": result["error"], "conflicts_found": 0}
+    return await run_github_sync(db, trigger="manual")
 
-    found_conflicts = GitHubIntegrationAgent.find_real_conflicts(result["pull_requests"])
-    created = []
-    skipped_duplicates = 0
 
-    for fc in found_conflicts:
-        # Deduplicate: don't create a repeat conflict card every time "Sync" is
-        # clicked for the same still-open PR pairing.
-        existing_stmt = select(ConflictEvent).where(
-            ConflictEvent.source == "github",
-            ConflictEvent.file_path == fc["file_path"],
-            ConflictEvent.function_name == fc["function_name"],
-            ConflictEvent.status == "predicted",
-        )
-        existing = (await db.execute(existing_stmt)).scalars().first()
-        if existing:
-            skipped_duplicates += 1
-            continue
-
-        dev_a = await CodeWatchAgent.get_or_create_developer(db, fc["dev_a"], avatar_color="#4F8CFF")
-        dev_b = await CodeWatchAgent.get_or_create_developer(db, fc["dev_b"], avatar_color="#FF6B6B")
-
-        event = await ConflictPredictionAgent.create_conflict_event(
-            db,
-            file_path=fc["file_path"],
-            function_name=fc["function_name"],
-            dev_a_id=dev_a.id,
-            dev_b_id=dev_b.id,
-            risk_score=fc["risk_score"],
-            source="github",
-            source_url=fc["source_url"],
-        )
-        created.append(event.id)
-
-        await CoordinatorAgent.log_decision(
-            db=db,
-            agent_name="GitHub Integration Agent",
-            module="dev_collab",
-            decision_summary=f"{'Confirmed' if fc['type']=='confirmed' else 'Predicted'} conflict in {fc['file_path']} "
-                              f"between {fc['dev_a']} and {fc['dev_b']} (from real GitHub data).",
-            used_llm=False,
-            related_entity_id=event.id,
+@router.post("/github/webhook")
+async def github_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_hub_signature_256: str | None = Header(None),
+    x_github_event: str | None = Header(None),
+):
+    """
+    GitHub webhook endpoint — PR opened/updated triggers instant conflict sync.
+    Configure in GitHub repo: Settings → Webhooks → Payload URL = webhook_url from /github/status
+    """
+    body = await request.body()
+    signature = x_hub_signature_256 or GitHubWebhookService.signature_header_from_request(request)
+    if not GitHubWebhookService.verify_signature(body, signature):
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Invalid GitHub webhook signature. "
+                "Set the GitHub webhook Secret to exactly match GITHUB_WEBHOOK_SECRET in backend/.env, "
+                "then click Redeliver on the failed delivery."
+            ),
         )
 
-        await _enrich_and_notify_conflict(db, event, fc["dev_a"], fc["dev_b"], fc["risk_score"])
+    try:
+        payload = GitHubWebhookService.parse_payload(body)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {exc}") from exc
 
-        await manager.broadcast("conflict_detected", {
-            "conflict_id": event.id, "file_path": fc["file_path"], "function_name": fc["function_name"],
-            "dev_a": fc["dev_a"], "dev_b": fc["dev_b"], "risk_score": fc["risk_score"], "source": "github",
-        })
+    result = await GitHubWebhookService.handle_event(db, x_github_event, payload)
+    return result
 
+
+@router.get("/github/webhook")
+async def github_webhook_info():
+    """Helpful for browser checks — webhooks must use POST from GitHub."""
     return {
-        "synced": True,
-        "pull_requests_checked": len(result["pull_requests"]),
-        "conflicts_found": len(created),
-        "conflicts_already_known": skipped_duplicates,
-        "conflict_ids": created,
+        "message": "GitHub webhook endpoint is active. GitHub must POST here (browser GET is not supported).",
+        "webhook_url": GitHubWebhookService.webhook_url(),
+        "secret_configured": bool((settings.GITHUB_WEBHOOK_SECRET or "").strip()),
     }

@@ -1,13 +1,13 @@
 """
-Hybrid AI Client — now powered by LangChain
-=============================================
-This is the heart of the "Hybrid approach" decision:
-- Uses LangChain's ChatGoogleGenerativeAI (wrapping Gemini) for reasoning tasks.
+Hybrid AI Client — Google GenAI SDK (supports AIza + AQ auth keys)
+==================================================================
+Hybrid approach:
+- Uses the official `google-genai` SDK (Gemini Developer API, including AQ auth keys).
 - If the API key is missing, times out, errors, or hits a rate limit,
   it automatically falls back to rule-based logic — so the demo NEVER crashes.
 
-Every agent in both modules calls `HybridAIClient.reason()` instead of
-calling LangChain/Gemini directly. This keeps the fallback logic in ONE place.
+Every "thinking" agent calls `HybridAIClient.reason()` instead of calling
+Gemini directly. Fallback logic lives in ONE place.
 """
 import asyncio
 import logging
@@ -30,10 +30,10 @@ class HybridAIClient:
             fallback_fn=lambda: "rule based answer"
         )
         result.text        -> the answer text
-        result.used_llm     -> True if the LLM (via LangChain) answered, False if fallback used
+        result.used_llm     -> True if Gemini answered, False if fallback used
     """
 
-    _model = None
+    _client = None
     _configured = False
 
     class Result:
@@ -51,38 +51,46 @@ class HybridAIClient:
             logger.info("LLM disabled or no valid API key — running in rule-based-only mode.")
             return
         try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            cls._model = ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash",
-                google_api_key=settings.GEMINI_API_KEY,
-                temperature=0.4,
+            from google import genai
+
+            cls._client = genai.Client(api_key=settings.GEMINI_API_KEY.strip())
+            logger.info(
+                "Google GenAI client ready (model=%s, key_type=%s).",
+                settings.LLM_MODEL,
+                "AQ-auth" if settings.GEMINI_API_KEY.strip().startswith("AQ.") else "standard",
             )
         except Exception as exc:  # pragma: no cover - defensive
-            logger.error(f"LangChain/Gemini configuration failed: {exc}")
-            cls._model = None
+            logger.error("Google GenAI configuration failed: %s", exc)
+            cls._client = None
 
     @classmethod
     async def reason(cls, prompt: str, fallback_fn) -> "HybridAIClient.Result":
         """
-        Try the LangChain-wrapped LLM first, fall back to rule-based fn on
-        ANY failure. `fallback_fn` must be a zero-arg callable returning a string.
+        Try Gemini first, fall back to rule-based fn on ANY failure.
+        `fallback_fn` must be a zero-arg callable returning a string.
         """
         cls._configure()
 
-        if FORCE_SIMULATED_FAILURE or cls._model is None:
+        if FORCE_SIMULATED_FAILURE or cls._client is None:
             return cls.Result(text=fallback_fn(), used_llm=False)
 
         try:
+            from google.genai import types
+
             response = await asyncio.wait_for(
-                cls._model.ainvoke(prompt),
+                cls._client.aio.models.generate_content(
+                    model=settings.LLM_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=0.4),
+                ),
                 timeout=settings.LLM_TIMEOUT_SECONDS,
             )
-            text = (response.content or "").strip()
+            text = (response.text or "").strip()
             if not text:
                 raise ValueError("Empty response from LLM")
             return cls.Result(text=text, used_llm=True)
         except Exception as exc:
-            logger.warning(f"LLM call failed, using rule-based fallback: {exc}")
+            logger.warning("LLM call failed, using rule-based fallback: %s", exc)
             return cls.Result(text=fallback_fn(), used_llm=False, error=str(exc))
 
 

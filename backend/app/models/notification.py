@@ -13,7 +13,7 @@ class TeamNotification(Base):
     __tablename__ = "team_notifications"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    channel: Mapped[str] = mapped_column(String(30))  # websocket | email | email_simulated
+    channel: Mapped[str] = mapped_column(String(30))  # websocket | email | email_simulated | slack | teams
     event_type: Mapped[str] = mapped_column(String(50))  # conflict_detected | conflict_resolved | incident_created
     module: Mapped[str] = mapped_column(String(30))  # dev_collab | aiops
     recipient: Mapped[str] = mapped_column(String(150))

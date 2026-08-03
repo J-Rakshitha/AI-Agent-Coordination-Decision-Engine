@@ -25,6 +25,7 @@ export default function DevCollabPage() {
   const [conflicts, setConflicts] = useState([]);
   const [commits, setCommits] = useState([]);
   const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const [simulating, setSimulating] = useState(false);
   const [suggestingId, setSuggestingId] = useState(null);
   const [github, setGithub] = useState({ configured: false, repo: null });
@@ -39,8 +40,16 @@ export default function DevCollabPage() {
         setConflicts(conflictsRes.data);
         setCommits(commitsRes.data);
         setError(false);
+        setErrorMessage("");
       })
-      .catch(() => setError(true));
+      .catch((err) => {
+        setError(true);
+        setErrorMessage(
+          err.code === "ECONNABORTED"
+            ? "Request timed out — the backend may still be processing. Try Refresh."
+            : "Backend not reachable — make sure the FastAPI server is running on port 8000."
+        );
+      });
   }, []);
 
   useEffect(() => {
@@ -56,11 +65,24 @@ export default function DevCollabPage() {
 
   async function handleSimulate() {
     setSimulating(true);
+    setError(false);
+    setErrorMessage("");
     try {
       await simulateDemoConflict();
       loadData();
-    } catch {
+    } catch (err) {
       setError(true);
+      if (err.code === "ECONNABORTED") {
+        setErrorMessage(
+          "Simulate Conflict timed out — LLM and Slack alerts can take 15–20 seconds. Try again or click Refresh."
+        );
+      } else if (err.response?.data?.detail) {
+        setErrorMessage(String(err.response.data.detail));
+      } else {
+        setErrorMessage(
+          "Backend not reachable — make sure the FastAPI server is running on port 8000."
+        );
+      }
     } finally {
       setSimulating(false);
     }
@@ -122,10 +144,23 @@ export default function DevCollabPage() {
           </div>
 
           {github.configured ? (
-            <p className="text-xs text-ink-faint mb-2">
-              Connected to real repository: <span className="font-mono text-ink-secondary">{github.repo}</span>.
-              This reads live open Pull Requests — no simulated data.
-            </p>
+            <div className="text-xs text-ink-faint mb-2 space-y-1">
+              <p>
+                Connected to real repository: <span className="font-mono text-ink-secondary">{github.repo}</span>.
+                Manual sync or GitHub webhook for instant PR updates.
+              </p>
+              {github.webhook_url && (
+                <p>
+                  Webhook URL:{" "}
+                  <span className="font-mono text-ink-secondary break-all">{github.webhook_url}</span>
+                  {github.webhook_secret_configured ? (
+                    <span className="text-accent-success ml-1">(secret configured)</span>
+                  ) : (
+                    <span className="text-ink-muted ml-1">(set GITHUB_WEBHOOK_SECRET in .env for production)</span>
+                  )}
+                </p>
+              )}
+            </div>
           ) : (
             <p className="text-xs text-ink-muted mb-2">
               Not connected yet. Add <span className="font-mono">GITHUB_TOKEN</span>,{" "}
@@ -171,7 +206,7 @@ export default function DevCollabPage() {
 
           {error && (
             <p className="text-xs text-ink-muted">
-              Backend not reachable — make sure the FastAPI server is running on port 8000.
+              {errorMessage || "Backend not reachable — make sure the FastAPI server is running on port 8000."}
             </p>
           )}
 

@@ -75,5 +75,8 @@ async def list_incidents(db: AsyncSession = Depends(get_db)):
             "mttr_seconds": i.mttr_seconds, "linked_commit_id": i.linked_commit_id,
             "linked_commit": linked_commit,
             "external_references": json.loads(i.external_references) if i.external_references else [],
+            "sla_minutes": i.sla_minutes,
+            "sla_deadline": i.sla_deadline,
+            "escalated_to": i.escalated_to,
         })
     return output

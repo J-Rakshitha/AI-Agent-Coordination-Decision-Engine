@@ -4,6 +4,9 @@ Notification Agent
 Delivers team alerts when agents complete significant actions. Channels:
   - WebSocket — live dashboard updates (always)
   - Email — real SMTP when configured, otherwise simulated delivery logged to DB
+  - Slack — incoming webhook when SLACK_WEBHOOK_URL is configured
+  - Discord — incoming webhook when DISCORD_WEBHOOK_URL is configured
+  - Microsoft Teams — incoming webhook when TEAMS_WEBHOOK_URL is configured
 
 Every delivery is persisted in TeamNotification so the audit trail survives
 page refreshes and can be queried via REST.
@@ -12,6 +15,7 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 
+import httpx
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -28,7 +32,39 @@ DEFAULT_TEAM_RECIPIENTS = [
 ]
 
 
+def _smtp_configured() -> bool:
+    return bool((settings.NOTIFICATION_SMTP_HOST or "").strip())
+
+
 class NotificationAgent:
+
+    @staticmethod
+    def team_email_recipients() -> list[str]:
+        """Real inboxes from .env when configured; otherwise demo addresses for simulated email."""
+        custom = (settings.NOTIFICATION_TEAM_EMAILS or "").strip()
+        if custom:
+            return [e.strip() for e in custom.split(",") if e.strip()]
+        if _smtp_configured():
+            oncall = (settings.NOTIFICATION_ONCALL_EMAIL or "").strip()
+            if oncall:
+                return [oncall]
+        return list(DEFAULT_TEAM_RECIPIENTS)
+
+    @staticmethod
+    def smtp_ready() -> bool:
+        return (
+            settings.NOTIFICATION_EMAIL_ENABLED
+            and _smtp_configured()
+            and bool((settings.NOTIFICATION_SMTP_USER or "").strip())
+            and bool((settings.NOTIFICATION_SMTP_PASSWORD or "").strip())
+        )
+
+    @staticmethod
+    def send_email(subject: str, message: str, recipient: str | None = None) -> bool:
+        to_addr = recipient or (settings.NOTIFICATION_ONCALL_EMAIL or "").strip()
+        if not to_addr:
+            return False
+        return NotificationAgent._send_email_sync(to_addr, subject, message)
 
     @staticmethod
     async def list_recent(db, limit: int = 30) -> list[TeamNotification]:
@@ -72,7 +108,7 @@ class NotificationAgent:
             msg["Subject"] = subject
             msg["From"] = settings.NOTIFICATION_FROM_EMAIL
             msg["To"] = recipient
-            with smtplib.SMTP(settings.NOTIFICATION_SMTP_HOST, settings.NOTIFICATION_SMTP_PORT, timeout=5) as server:
+            with smtplib.SMTP(settings.NOTIFICATION_SMTP_HOST, settings.NOTIFICATION_SMTP_PORT, timeout=12) as server:
                 if settings.NOTIFICATION_SMTP_USER:
                     server.starttls()
                     server.login(settings.NOTIFICATION_SMTP_USER, settings.NOTIFICATION_SMTP_PASSWORD)
@@ -83,11 +119,121 @@ class NotificationAgent:
             return False
 
     @staticmethod
+    def _send_webhook_sync(url: str, payload: dict, label: str) -> bool:
+        try:
+            with httpx.Client(timeout=8.0) as client:
+                resp = client.post(url, json=payload)
+                resp.raise_for_status()
+            return True
+        except Exception as exc:
+            logger.warning("%s webhook delivery failed: %s", label, exc)
+            return False
+
+    @staticmethod
+    def _teams_payloads(subject: str, message: str, url: str) -> list[dict]:
+        """Office 365 connectors use MessageCard; Power Automate webhooks often expect plain text."""
+        text = f"{subject}\n\n{message}"
+        payloads = [{"text": text}]
+        if "logic.azure.com" not in url and "powerautomate" not in url.lower():
+            payloads.append({
+                "@type": "MessageCard",
+                "@context": "http://schema.org/extensions",
+                "summary": subject,
+                "themeColor": "0076D7",
+                "title": subject,
+                "text": message.replace("\n", "<br>"),
+            })
+        else:
+            payloads.append({
+                "title": subject,
+                "text": message,
+            })
+        return payloads
+
+    @staticmethod
+    def send_teams_webhook(url: str, subject: str, message: str) -> bool:
+        """Post to Teams — tries compatible payload shapes until one succeeds."""
+        url = (url or "").strip()
+        if not url:
+            return False
+        for payload in NotificationAgent._teams_payloads(subject, message, url):
+            if NotificationAgent._send_webhook_sync(url, payload, "Teams"):
+                return True
+        return False
+
+    @staticmethod
+    def send_discord_webhook(url: str, subject: str, message: str) -> bool:
+        """Post to Discord channel webhook — tries embed then plain content."""
+        url = (url or "").strip()
+        if not url:
+            return False
+        text = f"**{subject}**\n{message}"
+        if len(text) > 2000:
+            text = text[:1997] + "..."
+        payloads = [
+            {
+                "embeds": [{
+                    "title": subject[:256],
+                    "description": message[:4096],
+                    "color": 5814783,
+                }],
+            },
+            {"content": text},
+        ]
+        for payload in payloads:
+            if NotificationAgent._send_webhook_sync(url, payload, "Discord"):
+                return True
+        return False
+
+    @staticmethod
+    async def _deliver_discord(db, subject: str, message: str, event_type: str,
+                               module: str, related_entity_id: int | None) -> TeamNotification | None:
+        url = (settings.DISCORD_WEBHOOK_URL or "").strip()
+        if not url:
+            return None
+        delivered = NotificationAgent.send_discord_webhook(url, subject, message)
+        channel = "discord" if delivered else "discord_failed"
+        return await NotificationAgent._persist(
+            db, channel, event_type, module, "discord-channel", subject, message,
+            related_entity_id, delivered,
+        )
+
+    @staticmethod
+    async def _deliver_slack(db, subject: str, message: str, event_type: str,
+                              module: str, related_entity_id: int | None) -> TeamNotification | None:
+        url = (settings.SLACK_WEBHOOK_URL or "").strip()
+        if not url:
+            return None
+        text = f"*{subject}*\n{message}"
+        delivered = NotificationAgent._send_webhook_sync(url, {"text": text}, "Slack")
+        channel = "slack" if delivered else "slack_failed"
+        return await NotificationAgent._persist(
+            db, channel, event_type, module, "slack-channel", subject, message,
+            related_entity_id, delivered,
+        )
+
+    @staticmethod
+    async def _deliver_teams(db, subject: str, message: str, event_type: str,
+                              module: str, related_entity_id: int | None) -> TeamNotification | None:
+        url = (settings.TEAMS_WEBHOOK_URL or "").strip()
+        if not url:
+            return None
+        delivered = NotificationAgent.send_teams_webhook(url, subject, message)
+        channel = "teams" if delivered else "teams_failed"
+        return await NotificationAgent._persist(
+            db, channel, event_type, module, "teams-channel", subject, message,
+            related_entity_id, delivered,
+        )
+
+    @staticmethod
     async def _deliver_email(db, recipient: str, subject: str, message: str, event_type: str,
                               module: str, related_entity_id: int | None) -> TeamNotification:
-        if settings.NOTIFICATION_EMAIL_ENABLED and settings.NOTIFICATION_SMTP_HOST:
+        if NotificationAgent.smtp_ready():
             delivered = NotificationAgent._send_email_sync(recipient, subject, message)
-            channel = "email" if delivered else "email_simulated"
+            channel = "email" if delivered else "email_failed"
+        elif settings.NOTIFICATION_EMAIL_ENABLED and _smtp_configured():
+            delivered = False
+            channel = "email_failed"
         else:
             delivered = True
             channel = "email_simulated"
@@ -107,13 +253,31 @@ class NotificationAgent:
         ws_payload: dict | None = None,
         recipients: list[str] | None = None,
     ) -> list[TeamNotification]:
-        targets = recipients or DEFAULT_TEAM_RECIPIENTS
+        targets = recipients or NotificationAgent.team_email_recipients()
         sent: list[TeamNotification] = []
 
         for recipient in targets:
             sent.append(await NotificationAgent._deliver_email(
                 db, recipient, subject, message, event_type, module, related_entity_id
             ))
+
+        slack_entry = await NotificationAgent._deliver_slack(
+            db, subject, message, event_type, module, related_entity_id
+        )
+        if slack_entry:
+            sent.append(slack_entry)
+
+        discord_entry = await NotificationAgent._deliver_discord(
+            db, subject, message, event_type, module, related_entity_id
+        )
+        if discord_entry:
+            sent.append(discord_entry)
+
+        teams_entry = await NotificationAgent._deliver_teams(
+            db, subject, message, event_type, module, related_entity_id
+        )
+        if teams_entry:
+            sent.append(teams_entry)
 
         await NotificationAgent._persist(
             db, "websocket", event_type, module, "dashboard", subject, message, related_entity_id
@@ -209,12 +373,18 @@ class NotificationAgent:
         severity: str,
         root_cause: str,
         status: str,
+        sla_deadline: str | None = None,
+        escalated_to: str | None = None,
     ) -> list[TeamNotification]:
         subject = f"[AIOps] {severity} incident on {service_name}"
         message = (
             f"Incident #{incident_id} on {service_name} — severity {severity}, status {status}.\n"
             f"Root cause: {root_cause}"
         )
+        if sla_deadline:
+            message += f"\nSLA deadline: {sla_deadline}"
+        if escalated_to:
+            message += f"\nEscalated to: {escalated_to}"
         oncall = settings.NOTIFICATION_ONCALL_EMAIL
         recipients = [oncall] if oncall else None
         return await NotificationAgent._notify_team(

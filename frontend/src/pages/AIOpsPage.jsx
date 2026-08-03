@@ -4,6 +4,7 @@ import { listIncidents, simulateIncident } from "../services/apiClient";
 import { useLiveSocketContext } from "../context/LiveSocketContext";
 import DecisionTrail from "../components/common/DecisionTrail";
 import ToolIntegrationPanel from "../components/common/ToolIntegrationPanel";
+import SlaCountdown from "../components/common/SlaCountdown";
 
 const severityColor = {
   P1: "text-red-400 border-red-500/40",
@@ -95,6 +96,14 @@ export default function AIOpsPage() {
                   <span className="uppercase tracking-wide text-[10px]">{inc.severity} · {inc.status}</span>
                 </div>
                 {inc.root_cause && <p className="text-xs text-ink-muted mt-1">{inc.root_cause}</p>}
+                <SlaCountdown
+                  slaDeadline={inc.sla_deadline}
+                  slaMinutes={inc.sla_minutes}
+                  status={inc.status}
+                  resolvedAt={inc.resolved_at}
+                  detectedAt={inc.detected_at}
+                  escalatedTo={inc.escalated_to}
+                />
                 {inc.mttr_seconds != null && (
                   <p className="text-[10px] text-ink-faint mt-1">Resolved in {inc.mttr_seconds}s</p>
                 )}

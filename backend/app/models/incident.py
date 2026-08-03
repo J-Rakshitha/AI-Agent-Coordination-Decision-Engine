@@ -22,6 +22,9 @@ class Incident(Base):
     mttr_seconds: Mapped[int] = mapped_column(nullable=True)  # Mean Time To Resolve
     linked_commit_id: Mapped[int] = mapped_column(ForeignKey("commit_logs.id"), nullable=True)
     external_references: Mapped[str] = mapped_column(Text, nullable=True)  # JSON list from ExternalLookupAgent
+    sla_minutes: Mapped[int] = mapped_column(nullable=True)
+    sla_deadline: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    escalated_to: Mapped[str] = mapped_column(String(100), nullable=True)
 
     actions: Mapped[list["RemediationAction"]] = relationship(back_populates="incident")
 

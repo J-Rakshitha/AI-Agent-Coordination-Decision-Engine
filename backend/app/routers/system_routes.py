@@ -4,7 +4,9 @@ Prefix: /api/system
 Includes the health check, aggregate stats, and the "Simulate API Failure"
 toggle used to PROVE the hybrid fallback works live during the demo.
 """
-from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -17,6 +19,132 @@ from app.agents.notification_agent import NotificationAgent
 from app.core.config import settings
 
 router = APIRouter(prefix="/api/system", tags=["System"])
+
+
+class WebhookTestIn(BaseModel):
+    url: str | None = None
+
+
+class TeamsWebhookTestIn(WebhookTestIn):
+    pass
+
+
+@router.get("/integrations")
+async def get_integrations():
+    """Which external notification/integration channels are configured."""
+    slack_url = (settings.SLACK_WEBHOOK_URL or "").strip()
+    discord_url = (settings.DISCORD_WEBHOOK_URL or "").strip()
+    teams_url = (settings.TEAMS_WEBHOOK_URL or "").strip()
+    return {
+        "email": {
+            "configured": NotificationAgent.smtp_ready(),
+            "smtp_host": settings.NOTIFICATION_SMTP_HOST or None,
+            "from_email": settings.NOTIFICATION_FROM_EMAIL or None,
+            "team_recipients": NotificationAgent.team_email_recipients(),
+            "setup_note": (
+                None
+                if NotificationAgent.smtp_ready()
+                else "Set NOTIFICATION_SMTP_* and Gmail App Password in backend/.env, then restart."
+            ),
+        },
+        "slack": {
+            "configured": bool(slack_url),
+            "channel_hint": "slack-channel" if slack_url else None,
+        },
+        "discord": {
+            "configured": bool(discord_url),
+            "channel_hint": "discord-channel" if discord_url else None,
+            "setup_note": (
+                None
+                if discord_url
+                else "Set DISCORD_WEBHOOK_URL in backend/.env — Discord channel → Integrations → Webhooks."
+            ),
+        },
+        "teams": {
+            "configured": bool(teams_url),
+            "channel_hint": "teams-channel" if teams_url else None,
+            "setup_note": (
+                None
+                if teams_url
+                else "Set TEAMS_WEBHOOK_URL in backend/.env — requires Microsoft 365 or Power Automate webhook URL."
+            ),
+        },
+        "github": {
+            "configured": bool((settings.GITHUB_TOKEN or "").strip()),
+            "repo": f"{settings.GITHUB_REPO_OWNER}/{settings.GITHUB_REPO_NAME}",
+            "webhook_url": f"{settings.PUBLIC_BACKEND_URL.rstrip('/')}/api/dev-collab/github/webhook",
+        },
+        "llm": {
+            "enabled": settings.LLM_ENABLED,
+            "model": settings.LLM_MODEL,
+        },
+    }
+
+
+@router.post("/test-teams-webhook")
+async def test_teams_webhook(body: TeamsWebhookTestIn | None = None):
+    """
+    Send a test alert to Microsoft Teams. Uses TEAMS_WEBHOOK_URL from .env,
+    or pass {\"url\": \"...\"} to test a URL before saving it.
+    """
+    test_url = (body.url if body and body.url else settings.TEAMS_WEBHOOK_URL or "").strip()
+    if not test_url:
+        raise HTTPException(
+            status_code=400,
+            detail="TEAMS_WEBHOOK_URL is not set. Paste your Teams/Power Automate webhook URL in backend/.env or pass it in the request body.",
+        )
+    subject = "[AI Agent Engine] Teams webhook test"
+    message = "If you see this in Teams, PART 3 is configured correctly."
+    delivered = NotificationAgent.send_teams_webhook(test_url, subject, message)
+    if not delivered:
+        raise HTTPException(
+            status_code=502,
+            detail="Teams webhook POST failed. Check the URL and that your Microsoft account supports incoming webhooks.",
+        )
+    return {"delivered": True, "tested_url_prefix": test_url[:48] + "..."}
+
+
+@router.post("/test-discord-webhook")
+async def test_discord_webhook(body: WebhookTestIn | None = None):
+    """Send a test alert to Discord. Uses DISCORD_WEBHOOK_URL from .env or pass url in body."""
+    test_url = (body.url if body and body.url else settings.DISCORD_WEBHOOK_URL or "").strip()
+    if not test_url:
+        raise HTTPException(
+            status_code=400,
+            detail="DISCORD_WEBHOOK_URL is not set. Paste your Discord webhook URL in backend/.env or pass it in the request body.",
+        )
+    subject = "[AI Agent Engine] Discord webhook test"
+    message = "If you see this in Discord, Discord alerts are configured correctly."
+    delivered = NotificationAgent.send_discord_webhook(test_url, subject, message)
+    if not delivered:
+        raise HTTPException(
+            status_code=502,
+            detail="Discord webhook POST failed. Check the URL is a valid channel webhook from Discord Integrations.",
+        )
+    return {"delivered": True, "tested_url_prefix": test_url[:48] + "..."}
+
+
+@router.post("/test-email")
+async def test_email():
+    """Send a test email using Gmail SMTP settings from .env."""
+    if not NotificationAgent.smtp_ready():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Gmail SMTP not fully configured. Set NOTIFICATION_SMTP_HOST, USER, PASSWORD "
+                "(Gmail App Password), FROM_EMAIL, and ONCALL_EMAIL in backend/.env, then restart."
+            ),
+        )
+    recipient = NotificationAgent.team_email_recipients()[0]
+    subject = "[AI Agent Engine] Gmail SMTP test"
+    message = "If you received this email, Gmail SMTP is configured correctly."
+    delivered = NotificationAgent.send_email(subject, message, recipient)
+    if not delivered:
+        raise HTTPException(
+            status_code=502,
+            detail="SMTP send failed. Check Gmail App Password and that 2-Step Verification is enabled.",
+        )
+    return {"delivered": True, "recipient": recipient}
 
 
 @router.get("/health")

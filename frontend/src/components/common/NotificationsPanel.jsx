@@ -16,13 +16,24 @@ const moduleAccent = {
 
 function channelIcon(channel) {
   if (channel === "websocket") return Radio;
+  if (channel === "slack" || channel === "slack_failed") return Bell;
+  if (channel === "discord" || channel === "discord_failed") return Bell;
+  if (channel === "teams" || channel === "teams_failed") return Bell;
   return Mail;
 }
 
 function channelLabel(channel) {
   if (channel === "websocket") return "Live";
   if (channel === "email") return "Email";
-  return "Email (simulated)";
+  if (channel === "email_simulated") return "Email (simulated)";
+  if (channel === "email_failed") return "Email (failed)";
+  if (channel === "slack") return "Slack";
+  if (channel === "slack_failed") return "Slack (failed)";
+  if (channel === "discord") return "Discord";
+  if (channel === "discord_failed") return "Discord (failed)";
+  if (channel === "teams") return "Teams";
+  if (channel === "teams_failed") return "Teams (failed)";
+  return channel;
 }
 
 export default function NotificationsPanel() {

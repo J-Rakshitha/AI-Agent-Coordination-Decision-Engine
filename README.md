@@ -106,7 +106,7 @@ single-purpose scripts.
 | **Tool Selector Agent** | AIOps | Picks the best remediation tool for the situation |
 | **Tool Executor Agent** | AIOps | Invokes tools with exception-safe execution |
 | **External Lookup Agent** | AIOps | Searches GitHub public issues for known patterns |
-| **Notification Agent** | Both | Delivers team alerts (WebSocket + email) |
+| **Notification Agent** | Both | Delivers team alerts (WebSocket + Gmail SMTP + Slack + Discord + Teams) |
 | **Coordinator Agent** | Both | Logs all decisions + links Dev conflicts → Production incidents |
 | **Memory Agent** | Both | Manages short-term and long-term shared memory |
 
@@ -150,7 +150,7 @@ Repeated patterns reinforce entries (`success_count` increments).
 | **Dev-Collaboration** | Predicted Conflicts | Risk score bar + **Code Review Agent** box + Resolution suggestion |
 | **Dev-Collaboration** | Recent Commits | Auto-created when conflicts resolve — feeds cross-module linking |
 | **Dev-Collaboration** | Real GitHub Integration | Live PR sync from configured repo (not simulated) |
-| **AIOps** | Live Incident Feed | Severity, root cause, linked commit, escalation status |
+| **AIOps** | Live Incident Feed | Severity, root cause, linked commit, **SLA countdown**, escalation status |
 | **AIOps** | Tool Integration Panel | Registered tools + measured execution accuracy |
 | **All pages** | Header — Live indicator | Green dot = WebSocket connected (real-time) |
 | **All pages** | Header — Simulate API Failure | Toggle to prove hybrid LLM fallback live on stage |
@@ -199,9 +199,15 @@ Repeated patterns reinforce entries (`success_count` increments).
 | Cross-module incident linking | ✅ Real correlation logic | |
 | Code Review Agent output on conflict cards | ✅ Real agent output in UI | |
 | Team Notifications panel (Overview) | ✅ Real DB records, live refresh | |
+| GitHub webhook (PR events) | ✅ Real-time auto-sync | |
+| Slack alerts | ✅ Real when `SLACK_WEBHOOK_URL` set | |
+| Discord alerts | ✅ Real when `DISCORD_WEBHOOK_URL` set | |
+| Gmail SMTP email alerts | ✅ Real when SMTP + App Password set | |
+| Microsoft Teams alerts | ✅ Real when `TEAMS_WEBHOOK_URL` set (M365 account) | |
+| SLA countdown (AIOps) | ✅ Live timer on incident cards | |
+| Alembic DB migrations | ✅ Schema updates without data loss | |
 | **Simulate Conflict** button | | ⚠️ Demo trigger (random file/function) |
 | **Simulate Incident** button | | ⚠️ Demo trigger (random metrics) |
-| Email notifications | ✅ Real if SMTP configured | Simulated log in DB by default |
 | Runbook tools (restart/clear cache) | | ⚠️ Simulated actions (safe for demo) |
 
 Demo buttons exist so the presentation never depends on external uptime.
@@ -210,7 +216,9 @@ In production, replace them with real metric pipelines and GitHub webhooks.
 ### Phase A — Real GitHub Integration
 - Connects to a real GitHub repo via REST API
 - Detects **confirmed** conflicts (`mergeable_state: dirty`) and **predicted** conflicts (2+ PRs touching same file)
-- Endpoint: `POST /api/dev-collab/github/sync`
+- Manual sync: `POST /api/dev-collab/github/sync`
+- **Webhook (real-time):** `POST /api/dev-collab/github/webhook` — configure in GitHub repo Settings → Webhooks
+- Webhook URL shown on Dev-Collab page and `GET /api/dev-collab/github/status`
 
 ### Phase B — Real Server Monitoring
 - Background scheduler probes every 30 seconds:
@@ -238,6 +246,20 @@ In production, replace them with real metric pipelines and GitHub webhooks.
 - Run: `cd backend && python -m app.mcp_server`
 - Tools: `github_issue_lookup`, `restart_service`, `clear_cache`, `check_service_health`, `sync_github_conflicts`, `select_and_execute_tool`, etc.
 
+### Multi-Channel Notifications (Notification Agent)
+
+One simulate action can alert **Slack + Discord + Gmail + live dashboard** in parallel:
+
+| Channel | `.env` variable | Setup |
+|---------|-----------------|-------|
+| **Slack** | `SLACK_WEBHOOK_URL` | Slack app → Incoming Webhooks |
+| **Discord** | `DISCORD_WEBHOOK_URL` | Channel → Integrations → Webhooks |
+| **Gmail** | `NOTIFICATION_SMTP_*` + `NOTIFICATION_TEAM_EMAILS` | Google App Password (2-Step ON) |
+| **Teams** | `TEAMS_WEBHOOK_URL` | Microsoft 365 / Power Automate (optional) |
+
+Check status: `GET /api/system/integrations`  
+Test endpoints: `POST /api/system/test-email`, `POST /api/system/test-discord-webhook`
+
 ---
 
 ## Tech Stack
@@ -249,7 +271,7 @@ In production, replace them with real metric pipelines and GitHub webhooks.
 | Auth | JWT (python-jose) + bcrypt |
 | Monitoring | Background asyncio scheduler + httpx probes |
 | MCP | `mcp` Python SDK (FastMCP) |
-| LLM | Google Gemini API (free tier) + rule-based fallback |
+| LLM | Google Gemini API via **google-genai** SDK (AIza + AQ keys) + rule-based fallback |
 | Frontend | React 18 + Vite, Tailwind CSS, React Router, lucide-react |
 | Deployment | Backend → Render, Frontend → Vercel |
 
@@ -348,11 +370,23 @@ LLM_ENABLED=True
 GITHUB_TOKEN=your_github_token_here
 GITHUB_REPO_OWNER=your-username
 GITHUB_REPO_NAME=your-repo-name
+GITHUB_WEBHOOK_SECRET=your_webhook_secret
+PUBLIC_BACKEND_URL=http://localhost:8000
 
-# Notifications — optional real email (defaults to simulated log in DB)
+# Notifications — Gmail SMTP (Google App Password, not normal password)
 NOTIFICATION_EMAIL_ENABLED=True
-NOTIFICATION_SMTP_HOST=
-NOTIFICATION_ONCALL_EMAIL=oncall@infosys.com
+NOTIFICATION_FROM_EMAIL=your-email@gmail.com
+NOTIFICATION_ONCALL_EMAIL=your-email@gmail.com
+NOTIFICATION_TEAM_EMAILS=your-email@gmail.com
+NOTIFICATION_SMTP_HOST=smtp.gmail.com
+NOTIFICATION_SMTP_PORT=587
+NOTIFICATION_SMTP_USER=your-email@gmail.com
+NOTIFICATION_SMTP_PASSWORD=your-gmail-app-password
+
+# Slack / Discord / Teams — incoming webhook URLs (optional)
+SLACK_WEBHOOK_URL=
+DISCORD_WEBHOOK_URL=
+TEAMS_WEBHOOK_URL=
 ```
 
 > **Never commit `.env`** — it is gitignored. Only commit `.env.example`.
@@ -397,18 +431,28 @@ python -m app.mcp_server
 
 ```bash
 cd backend
-python -m pytest -v                  # Full suite — 32 tests
+python -m pytest -v                  # Full suite — 46+ tests
 python -m pytest tests/test_milestone3.py -v   # Milestone 3 only — 6 tests
+python -m pytest tests/test_enterprise_integrations.py -v   # SLA, webhook, Slack, Discord, Gmail — 14 tests
+python -m pytest tests/test_llm_hybrid.py -v   # Hybrid LLM (google-genai SDK) — 3 tests
 ```
 
 All tests use an isolated `test_coordination_engine.db` (separate from your
 real dev database) and reset schema before every test, so they never
 interfere with data you're using for a live demo.
 
-### Database Schema Note
+### Database Migrations (Alembic)
 
-If you pull new code that adds DB columns/tables and see a `500` error like
-`no such column`, delete the old database and restart the backend:
+Schema changes are applied automatically on backend startup via Alembic.
+You can also run migrations manually:
+
+```bash
+cd backend
+alembic upgrade head
+```
+
+This adds new columns (e.g. SLA fields) **without deleting** existing data.
+Legacy manual step (only if migrations fail):
 
 ```powershell
 cd backend
@@ -500,10 +544,22 @@ The backend recreates all tables automatically on startup.
 | Real-time Dashboard UI | WebSocket live updates + Notifications + Code Review panels |
 | Real-time Monitoring (Phase B) | Background scheduler + Server Monitor Agent |
 | Multi-user Access (Phase C) | JWT auth with role-based demo users |
-| LangChain configured | HybridAIClient via langchain_google_genai |
+| LangChain configured | HybridAIClient via **google-genai** SDK (AIza + AQ auth keys) |
 | Custom enterprise tools & API connectors | `tool_registry.py` — 5 registered tools |
 | Intelligent tool selection | `ToolSelectorAgent` — LLM + keyword fallback + short-term memory |
-| Testing | **32 pytest tests** — `python -m pytest -v` |
+| Testing | **46+ pytest tests** — `python -m pytest -v` |
+
+---
+
+## Push to GitHub (one shot)
+
+From the project root (never commits `.env` — it is gitignored):
+
+```powershell
+git add -A; git commit -m "Milestone 3 complete: multi-channel alerts, GitHub webhook, enterprise polish"; git push origin main
+```
+
+Repo: [J-Rakshitha/AI-Agent-Coordination-Decision-Engine](https://github.com/J-Rakshitha/AI-Agent-Coordination-Decision-Engine)
 
 ---
 
@@ -517,6 +573,7 @@ The backend recreates all tables automatically on startup.
 - [x] Tool Integration (Milestone 2) — 5 enterprise tools + intelligent selection
 - [x] **Milestone 3 — Agent Coordination & Memory Systems**
 - [x] Milestone 3 UI — Code Review on conflict cards + Team Notifications panel
+- [x] Enterprise polish — Alembic migrations, SLA countdown UI, GitHub webhook, Slack/Discord/Gmail alerts
 - [x] GitHub push — [repo live](https://github.com/J-Rakshitha/AI-Agent-Coordination-Decision-Engine)
 - [ ] Render/Vercel deployment
 - [ ] Final demo rehearsal

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "gemini"
     LLM_ENABLED: bool = True
     LLM_TIMEOUT_SECONDS: int = 6
+    LLM_MODEL: str = "gemini-flash-latest"
 
     # CORS
     FRONTEND_ORIGIN: str = "http://localhost:5173"
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str = ""
     GITHUB_REPO_OWNER: str = "J-Rakshitha"
     GITHUB_REPO_NAME: str = "dev-collab-test-repo"
+    # GitHub webhook — set in repo Settings → Webhooks; verifies X-Hub-Signature-256
+    GITHUB_WEBHOOK_SECRET: str = ""
+    # Public URL of this backend (for webhook setup docs); e.g. https://your-app.onrender.com
+    PUBLIC_BACKEND_URL: str = "http://localhost:8000"
 
     # Anomaly detection thresholds (configurable per environment — not hardcoded in agents)
     MONITORING_RESPONSE_TIME_MS_THRESHOLD: int = 1500
@@ -55,10 +60,17 @@ class Settings(BaseSettings):
     NOTIFICATION_EMAIL_ENABLED: bool = True
     NOTIFICATION_FROM_EMAIL: str = "aiops@infosys.com"
     NOTIFICATION_ONCALL_EMAIL: str = "oncall@infosys.com"
+    # Comma-separated real inboxes for conflict/other team alerts (overrides demo addresses when set)
+    NOTIFICATION_TEAM_EMAILS: str = ""
     NOTIFICATION_SMTP_HOST: str = ""
     NOTIFICATION_SMTP_PORT: int = 587
     NOTIFICATION_SMTP_USER: str = ""
     NOTIFICATION_SMTP_PASSWORD: str = ""
+
+    # Slack / Discord / Microsoft Teams — optional real-time team alerts (incoming webhook URLs)
+    SLACK_WEBHOOK_URL: str = ""
+    DISCORD_WEBHOOK_URL: str = ""
+    TEAMS_WEBHOOK_URL: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

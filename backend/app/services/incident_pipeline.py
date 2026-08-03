@@ -2,7 +2,7 @@
 Shared incident pipeline — used by REST ingest, simulate, and background monitor.
 """
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,6 +72,9 @@ async def run_incident_pipeline(db: AsyncSession, metrics: dict) -> dict:
 
     severity = SeverityAgent.classify(anomaly["error_rate_pct"], anomaly["affected_users_pct"])
     incident.severity = severity
+    sla_minutes = SeverityAgent.sla_minutes_for(severity)
+    incident.sla_minutes = sla_minutes
+    incident.sla_deadline = datetime.utcnow() + timedelta(minutes=sla_minutes)
 
     await CoordinatorAgent.log_decision(
         db=db,
@@ -109,6 +112,10 @@ async def run_incident_pipeline(db: AsyncSession, metrics: dict) -> dict:
     escalation = None
     if not remediation_succeeded or severity == "P1":
         escalation = EscalationAgent.build_escalation(incident.id, severity, root_cause_result["root_cause"])
+        incident.escalated_to = escalation["escalated_to"]
+        db.add(incident)
+        await db.commit()
+        await db.refresh(incident)
 
     linked_commit = await CoordinatorAgent.find_linked_commit(db, anomaly["service_name"])
     linked_commit_info = None
@@ -139,6 +146,8 @@ async def run_incident_pipeline(db: AsyncSession, metrics: dict) -> dict:
         severity=severity,
         root_cause=incident.root_cause or "",
         status=incident.status,
+        sla_deadline=incident.sla_deadline.isoformat() if incident.sla_deadline else None,
+        escalated_to=incident.escalated_to,
     )
 
     return {

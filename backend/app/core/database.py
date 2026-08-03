@@ -3,10 +3,15 @@ Database engine + session management (async SQLAlchemy).
 Works with SQLite in dev and Postgres in production by just
 changing DATABASE_URL in .env — no code change needed.
 """
+import asyncio
+import logging
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
+
+logger = logging.getLogger("database")
 
 
 class Base(DeclarativeBase):
@@ -30,6 +35,11 @@ async def get_db():
 
 
 async def init_db():
-    """Create all tables on startup (dev convenience; use migrations in prod)."""
+    """Create base tables, then apply Alembic migrations for additive schema changes."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    try:
+        from app.core.migrations import run_migrations
+        await asyncio.to_thread(run_migrations)
+    except Exception as exc:
+        logger.warning("Alembic migration step skipped or failed (non-fatal): %s", exc)
