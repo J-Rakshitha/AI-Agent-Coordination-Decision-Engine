@@ -359,7 +359,6 @@ ai-agent-coordination-engine/
 │   │   └── ...                             # 55 tests total
 │   ├── run.ps1                             # Windows one-click backend start
 │   ├── requirements.txt
-│   └── .env.example
 ├── frontend/
 │   ├── src/
 │   │   ├── pages/
@@ -405,7 +404,7 @@ Open **http://localhost:5173** — green **Live** dot in header confirms WebSock
 
 ```bash
 cd backend
-cp .env.example .env
+# Create backend/.env manually — see key settings below (not tracked in git)
 ```
 
 Edit `backend/.env` — key settings:
@@ -438,7 +437,7 @@ DISCORD_WEBHOOK_URL=
 TEAMS_WEBHOOK_URL=
 ```
 
-> **Never commit `.env`** — it is gitignored. Only commit `.env.example`.
+> **Never commit `.env`** — it is gitignored. Copy settings from README env block into `backend/.env` locally.
 
 ```bash
 pip install -r requirements.txt

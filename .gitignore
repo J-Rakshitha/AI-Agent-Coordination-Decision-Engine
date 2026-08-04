@@ -4,7 +4,11 @@ __pycache__/
 *.pyc
 *.db
 .env
+backend/.env.example
 .pytest_cache/
+
+# --- Local milestone documents (do not push to GitHub) ---
+docs/
 
 # --- Frontend (Node) ---
 node_modules/
