@@ -52,6 +52,46 @@ async def handler_clear_cache(db, incident_id: int | None = None, **kwargs) -> d
     return {"success": True, "output": ACTION_LABELS["clear_cache"] + " (simulated, no incident attached)"}
 
 
+async def handler_semantic_conflict_analyze(
+    db,
+    file_path: str = "",
+    function_name: str = "",
+    dev_a_name: str = "Dev A",
+    dev_b_name: str = "Dev B",
+    risk_score: float = 50.0,
+    **kwargs,
+) -> dict:
+    """AST + LLM semantic conflict analysis for overlapping edits."""
+    from app.agents.dev_collab.semantic_analysis_agent import SemanticAnalysisAgent
+
+    result = await SemanticAnalysisAgent.analyze(
+        db, file_path, function_name or None, dev_a_name, dev_b_name, risk_score
+    )
+    return {"success": True, "output": result}
+
+
+async def handler_evaluate_code_quality(
+    db,
+    file_path: str = "",
+    function_name: str = "",
+    risk_score: float = 50.0,
+    **kwargs,
+) -> dict:
+    """Structured quality scorecard from AST metrics."""
+    from app.agents.dev_collab.quality_agent import QualityAgent
+
+    result = await QualityAgent.evaluate(db, file_path, function_name or None, risk_score)
+    return {"success": True, "output": result}
+
+
+async def handler_semantic_knowledge_search(db, query: str = "", **kwargs) -> dict:
+    """RAG semantic search over knowledge base and agent decisions."""
+    from app.agents.dev_collab.knowledge_search_agent import KnowledgeSearchAgent
+
+    result = await KnowledgeSearchAgent.search(db, query or "conflict resolution")
+    return {"success": True, "output": result}
+
+
 def register_all_tools() -> None:
     register_tool(Tool(
         name="github_issue_lookup",
@@ -82,6 +122,24 @@ def register_all_tools() -> None:
         description="Clear the affected service's cache — fixes stale-data or memory-growth issues.",
         keywords=["cache", "memory leak", "stale", "growing memory"],
         handler=handler_clear_cache,
+    ))
+    register_tool(Tool(
+        name="semantic_conflict_analyze",
+        description="Deep semantic/AST analysis of merge conflict risk between two developers.",
+        keywords=["semantic", "conflict", "merge", "ast", "logic", "overlap", "analysis"],
+        handler=handler_semantic_conflict_analyze,
+    ))
+    register_tool(Tool(
+        name="evaluate_code_quality",
+        description="Generate a structured code quality scorecard with A/B/C grade from AST metrics.",
+        keywords=["quality", "lint", "complexity", "grade", "scorecard", "review"],
+        handler=handler_evaluate_code_quality,
+    ))
+    register_tool(Tool(
+        name="semantic_knowledge_search",
+        description="Semantic RAG search over institutional knowledge and past agent decisions.",
+        keywords=["search", "rag", "knowledge", "semantic", "similar", "history", "embedding"],
+        handler=handler_semantic_knowledge_search,
     ))
 
 

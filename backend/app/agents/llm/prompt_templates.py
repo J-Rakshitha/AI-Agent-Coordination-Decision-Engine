@@ -38,3 +38,26 @@ TOOL_SELECTION_PROMPT = ChatPromptTemplate.from_template(
     "Available tools:\n{tool_descriptions}\n\n"
     "Reply with ONLY the exact tool name from the list above, nothing else."
 )
+
+SEMANTIC_ANALYSIS_PROMPT = ChatPromptTemplate.from_template(
+    "Two developers, {dev_a_name} and {dev_b_name}, are editing '{function_name}' in "
+    "'{file_path}' with {risk_score}% merge-conflict risk.\n"
+    "AST diff report:\n{ast_report}\n"
+    "Source snippet:\n{source_snippet}"
+    "{memory_context}\n"
+    "In 2-3 sentences, explain the semantic/logic-level conflict risk and what could break if both merge without coordination."
+)
+
+QUALITY_SCORECARD_PROMPT = ChatPromptTemplate.from_template(
+    "Evaluate code quality for '{function_name}' in '{file_path}'.\n"
+    "AST metrics:\n{metrics_json}\n"
+    "Source:\n{source_snippet}\n"
+    "In 2 short sentences, summarize quality concerns and one concrete improvement."
+)
+
+RESOLUTION_SYNTHESIZER_PROMPT = ChatPromptTemplate.from_template(
+    "Conflict between {dev_a_name} and {dev_b_name} on '{function_name}' in '{file_path}'.\n"
+    "Semantic risk: {semantic_risk}%, type: {conflict_type}, quality grade: {quality_grade}."
+    "{memory_context}\n"
+    "Suggest the best coordination strategy in 2 sentences (rebase, split work, or pair sync)."
+)

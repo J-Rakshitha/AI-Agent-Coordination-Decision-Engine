@@ -69,3 +69,57 @@ def fallback_code_review(
 
     tips.append("Add or update unit tests for the modified function.")
     return " ".join(tips)
+
+
+def fallback_semantic_analysis(
+    file_path: str,
+    function_name: str | None,
+    dev_a: str,
+    dev_b: str,
+    risk_score: float,
+    ast_report: dict,
+) -> str:
+    fn = function_name or "the file"
+    parts = [
+        f"{dev_a} and {dev_b} may introduce incompatible logic in '{fn}' ({file_path})."
+    ]
+    if ast_report.get("signature_changed"):
+        parts.append("AST shows signature changes — callers may break after merge.")
+    if ast_report.get("complexity_a", 0) > 10 or ast_report.get("complexity_b", 0) > 10:
+        parts.append("High cyclomatic complexity increases regression risk.")
+    if risk_score >= 60:
+        parts.append(f"Semantic risk elevated ({risk_score}%) — require joint review before push.")
+    return " ".join(parts)
+
+
+def fallback_quality_report(metrics: dict) -> str:
+    score = metrics.get("quality_score", 50)
+    cx = metrics.get("cyclomatic_complexity", 1)
+    if score >= 85:
+        return f"Quality score {score}/100 — acceptable. Complexity {cx}; maintain test coverage."
+    if score >= 65:
+        return (
+            f"Quality score {score}/100 — moderate. Complexity {cx}; "
+            "add docstrings and reduce function length before merge."
+        )
+    return (
+        f"Quality score {score}/100 — needs improvement. Complexity {cx}; "
+        "refactor before merging overlapping edits."
+    )
+
+
+def fallback_resolution_strategies(
+    dev_a: str,
+    dev_b: str,
+    file_path: str,
+    function_name: str | None,
+    sem_risk: float,
+    conflict_type: str,
+    grade: str,
+) -> str:
+    fn = function_name or "the target"
+    return (
+        f"Strategy 1: {dev_a} rebases onto {dev_b}'s branch and resolves {fn} conflicts. "
+        f"Strategy 2: split {conflict_type} work — separate PRs for logic vs tests. "
+        f"Strategy 3: pair-program given semantic risk {sem_risk}% and grade {grade}."
+    )

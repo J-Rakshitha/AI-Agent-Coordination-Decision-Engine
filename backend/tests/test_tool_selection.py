@@ -83,6 +83,7 @@ async def test_unrelated_situation_still_returns_a_valid_tool_no_crash(client):
     assert body["tool_name"] in {
         "github_issue_lookup", "create_escalation_ticket", "query_knowledge_base",
         "restart_service", "clear_cache",
+        "semantic_conflict_analyze", "evaluate_code_quality", "semantic_knowledge_search",
     }
 
 
@@ -117,4 +118,5 @@ async def test_incident_pipeline_uses_intelligent_tool_selection(client):
     assert body["action_taken"] in {
         "github_issue_lookup", "create_escalation_ticket", "query_knowledge_base",
         "restart_service", "clear_cache",
+        "semantic_conflict_analyze", "evaluate_code_quality", "semantic_knowledge_search",
     }

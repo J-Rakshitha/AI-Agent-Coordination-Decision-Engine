@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { GitBranch, AlertTriangle, Sparkles, Loader2, RefreshCw, GitCommit, Github, ExternalLink, FileSearch } from "lucide-react";
+import { GitBranch, AlertTriangle, Sparkles, Loader2, RefreshCw, GitCommit, Github, ExternalLink, FileSearch, ScanSearch, Brain, Award, Layers } from "lucide-react";
 import {
   getActiveSessions,
   listConflicts,
@@ -8,6 +8,7 @@ import {
   listCommits,
   githubStatus,
   githubSync,
+  repositoryDiscovery,
 } from "../services/apiClient";
 import { useLiveSocketContext } from "../context/LiveSocketContext";
 import DecisionTrail from "../components/common/DecisionTrail";
@@ -31,6 +32,8 @@ export default function DevCollabPage() {
   const [github, setGithub] = useState({ configured: false, repo: null });
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoveryResult, setDiscoveryResult] = useState(null);
   const { lastEvent } = useLiveSocketContext();
 
   const loadData = useCallback(() => {
@@ -110,6 +113,19 @@ export default function DevCollabPage() {
     }
   }
 
+  async function handleDiscovery() {
+    setDiscovering(true);
+    setDiscoveryResult(null);
+    try {
+      const res = await repositoryDiscovery({});
+      setDiscoveryResult(res.data);
+    } catch (err) {
+      setDiscoveryResult({ error: err.response?.data?.detail || err.message });
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
   async function handleSuggest(conflictId) {
     setSuggestingId(conflictId);
     try {
@@ -125,6 +141,38 @@ export default function DevCollabPage() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-6">
       <div className="lg:col-span-2 space-y-4">
+
+        {/* Enterprise Repository Discovery */}
+        <div className="bg-base-surface border border-base-border rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-ink-primary flex items-center gap-2">
+              <ScanSearch size={16} className="text-accent-devcollab" />
+              Repository Discovery (Phase 1)
+            </h2>
+            <button
+              onClick={handleDiscovery}
+              disabled={discovering}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-accent-devcollab/15 text-accent-devcollab border border-accent-devcollab/30 hover:bg-accent-devcollab/25 transition-colors disabled:opacity-50"
+            >
+              {discovering ? <Loader2 size={13} className="animate-spin" /> : <ScanSearch size={13} />}
+              Scan Repository
+            </button>
+          </div>
+          <p className="text-xs text-ink-muted mb-2">
+            Real AST scan of backend/app and frontend/src — indexes functions, classes, complexity.
+          </p>
+          {discoveryResult && !discoveryResult.error && (
+            <div className="text-xs rounded-lg px-3 py-2 bg-accent-success/10 text-accent-success">
+              Indexed {discoveryResult.context?.symbols_indexed ?? 0} symbols across{" "}
+              {discoveryResult.context?.files_scanned ?? 0} files.
+            </div>
+          )}
+          {discoveryResult?.error && (
+            <div className="text-xs rounded-lg px-3 py-2 bg-accent-warning/10 text-accent-warning">
+              {discoveryResult.error}
+            </div>
+          )}
+        </div>
 
         {/* Real GitHub Integration panel */}
         <div className="bg-base-surface border border-base-border rounded-xl p-4">
@@ -290,6 +338,45 @@ export default function DevCollabPage() {
                   </a>
                 )}
 
+                {c.discovery_context && (
+                  <div className="mb-2 rounded-lg bg-accent-devcollab/5 border border-accent-devcollab/20 px-2.5 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-accent-devcollab font-medium mb-1 flex items-center gap-1">
+                      <ScanSearch size={11} />
+                      Repository Discovery
+                    </p>
+                    <p className="text-xs text-ink-secondary">
+                      {c.discovery_context.symbols_indexed} symbols indexed
+                      {c.discovery_context.target_symbol && (
+                        <> — target: {c.discovery_context.target_symbol.name} (complexity {c.discovery_context.target_symbol.complexity})</>
+                      )}
+                    </p>
+                  </div>
+                )}
+
+                {c.semantic_analysis && (
+                  <div className="mb-2 rounded-lg bg-purple-500/5 border border-purple-500/20 px-2.5 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-purple-400 font-medium mb-1 flex items-center gap-1">
+                      <Brain size={11} />
+                      Semantic Analysis — {c.semantic_analysis.conflict_type} ({c.semantic_analysis.semantic_risk_score}%)
+                    </p>
+                    <p className="text-xs text-ink-secondary leading-relaxed">
+                      {c.semantic_analysis.analysis_text}
+                    </p>
+                  </div>
+                )}
+
+                {c.quality_report && (
+                  <div className="mb-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20 px-2.5 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-emerald-400 font-medium mb-1 flex items-center gap-1">
+                      <Award size={11} />
+                      Quality Grade {c.quality_report.grade} — {c.quality_report.quality_score}/100
+                    </p>
+                    <p className="text-xs text-ink-secondary leading-relaxed">
+                      {c.quality_report.report_text}
+                    </p>
+                  </div>
+                )}
+
                 {c.code_review_notes && (
                   <div className="mb-2 rounded-lg bg-accent-warning/5 border border-accent-warning/20 px-2.5 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-accent-warning font-medium mb-1 flex items-center gap-1">
@@ -299,6 +386,23 @@ export default function DevCollabPage() {
                     <p className="text-xs text-ink-secondary leading-relaxed">
                       {c.code_review_notes}
                     </p>
+                  </div>
+                )}
+
+                {c.resolution_options && c.resolution_options.length > 0 && (
+                  <div className="mt-2 mb-2 rounded-lg bg-base-bg border border-base-border px-2.5 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-ink-muted font-medium mb-1.5 flex items-center gap-1">
+                      <Layers size={11} />
+                      Resolution Synthesizer — {c.resolution_options.length} strategies
+                    </p>
+                    <div className="space-y-1">
+                      {c.resolution_options.map((opt, i) => (
+                        <div key={i} className="text-[11px] text-ink-secondary flex justify-between gap-2">
+                          <span className="truncate">{opt.strategy.replace(/_/g, " ")}</span>
+                          <span className="text-ink-faint shrink-0">score {opt.score}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

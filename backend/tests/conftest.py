@@ -21,7 +21,7 @@ from app.core.database import engine, Base
 from app.services.seed_users import seed_demo_users
 
 # Import all models so Base.metadata knows about every table.
-from app.models import dev_collab, incident, memory, tool_execution, monitoring, user, notification  # noqa: F401
+from app.models import dev_collab, incident, memory, tool_execution, monitoring, user, notification, enterprise  # noqa: F401
 
 
 @pytest_asyncio.fixture(autouse=True)

@@ -220,6 +220,16 @@ async def get_notifications(db: AsyncSession = Depends(get_db)):
     ]
 
 
+@router.get("/knowledge-base/search")
+async def search_knowledge_base(q: str = "", db: AsyncSession = Depends(get_db)):
+    """
+    Phase 5 — Semantic RAG search over knowledge base and agent decision history.
+    """
+    from app.agents.dev_collab.knowledge_search_agent import KnowledgeSearchAgent
+
+    return await KnowledgeSearchAgent.search(db, q)
+
+
 @router.post("/toggle-llm-failure")
 async def toggle_llm_failure(enabled: bool):
     """

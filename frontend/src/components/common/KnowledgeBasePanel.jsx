@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { BrainCircuit } from "lucide-react";
-import { getKnowledgeBase } from "../../services/apiClient";
+import { BrainCircuit, Search, Loader2 } from "lucide-react";
+import { getKnowledgeBase, searchKnowledgeBase } from "../../services/apiClient";
 import { useLiveSocketContext } from "../../context/LiveSocketContext";
 
 const categoryLabel = {
@@ -16,6 +16,9 @@ const categoryLabel = {
 export default function KnowledgeBasePanel() {
   const [entries, setEntries] = useState([]);
   const [error, setError] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState(null);
+  const [searching, setSearching] = useState(false);
   const { lastEvent } = useLiveSocketContext();
 
   const load = useCallback(() => {
@@ -35,6 +38,20 @@ export default function KnowledgeBasePanel() {
     if (lastEvent) load();
   }, [lastEvent, load]);
 
+  async function handleSearch(e) {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    try {
+      const res = await searchKnowledgeBase(searchQuery.trim());
+      setSearchResults(res.data);
+    } catch {
+      setSearchResults({ results: [], query: searchQuery });
+    } finally {
+      setSearching(false);
+    }
+  }
+
   return (
     <div className="bg-base-surface border border-base-border rounded-xl p-4">
       <h2 className="text-sm font-semibold text-ink-primary mb-1 flex items-center gap-2">
@@ -45,6 +62,38 @@ export default function KnowledgeBasePanel() {
         Insights the agents have learned from past incidents and conflicts — reused instead of
         reasoning from scratch each time the same pattern appears.
       </p>
+
+      <form onSubmit={handleSearch} className="flex gap-2 mb-3">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Semantic search (Phase 5 RAG)..."
+          className="flex-1 text-xs px-2.5 py-1.5 rounded-lg bg-base-bg border border-base-border text-ink-primary"
+        />
+        <button
+          type="submit"
+          disabled={searching}
+          className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-accent-success/15 text-accent-success border border-accent-success/30 disabled:opacity-50"
+        >
+          {searching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+          Search
+        </button>
+      </form>
+
+      {searchResults && searchResults.results?.length > 0 && (
+        <div className="mb-3 space-y-1.5">
+          <p className="text-[10px] uppercase tracking-wide text-accent-success font-medium">
+            Semantic results ({searchResults.used_embeddings ? "embeddings" : "keyword"})
+          </p>
+          {searchResults.results.map((r, i) => (
+            <div key={i} className="text-xs bg-base-bg border border-base-border rounded-lg px-2.5 py-2">
+              <span className="text-ink-faint">{Math.round((r.similarity || 0) * 100)}% — </span>
+              <span className="text-ink-secondary">{r.text?.slice(0, 120)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!error && entries.length === 0 && (
         <p className="text-xs text-ink-muted">

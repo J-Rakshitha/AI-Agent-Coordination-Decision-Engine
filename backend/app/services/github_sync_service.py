@@ -1,6 +1,8 @@
 """
 Shared GitHub sync logic — used by manual sync and webhook-triggered sync.
 """
+import json
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -19,9 +21,41 @@ async def enrich_and_notify_conflict(
     dev_b_name: str,
     risk_score: float,
 ) -> dict:
-    """Pipeline step: Code Review Agent → persist notes → Notification Agent."""
+    """
+    Enterprise pipeline:
+    Discovery → Semantic Analysis → Quality → Code Review → Notify
+    """
+    from app.agents.dev_collab.repository_discovery_agent import RepositoryDiscoveryAgent
+    from app.agents.dev_collab.semantic_analysis_agent import SemanticAnalysisAgent
+    from app.agents.dev_collab.quality_agent import QualityAgent
     from app.agents.dev_collab.code_review_agent import CodeReviewAgent
     from app.agents.notification_agent import NotificationAgent
+
+    discovery = await RepositoryDiscoveryAgent.discover(
+        db, file_path=event.file_path, function_name=event.function_name
+    )
+    event.discovery_context = json.dumps(discovery["context"])
+
+    semantic = await SemanticAnalysisAgent.analyze(
+        db,
+        event.file_path,
+        event.function_name,
+        dev_a_name,
+        dev_b_name,
+        risk_score,
+        discovery_context=discovery["context"],
+    )
+    event.semantic_analysis = json.dumps(semantic)
+
+    quality = await QualityAgent.evaluate(
+        db,
+        event.file_path,
+        event.function_name,
+        risk_score,
+        semantic_risk=semantic.get("semantic_risk_score"),
+        discovery_context=discovery["context"],
+    )
+    event.quality_report = json.dumps(quality)
 
     review = await CodeReviewAgent.review(
         db, event.file_path, event.function_name or "", dev_a_name, dev_b_name, risk_score
@@ -41,7 +75,12 @@ async def enrich_and_notify_conflict(
         risk_score=risk_score,
         code_review=review["review"],
     )
-    return review
+    return {
+        "discovery": discovery,
+        "semantic": semantic,
+        "quality": quality,
+        "review": review,
+    }
 
 
 async def run_github_sync(db: AsyncSession, trigger: str = "manual") -> dict:

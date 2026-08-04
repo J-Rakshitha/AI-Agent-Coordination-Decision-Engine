@@ -39,6 +39,8 @@ export const simulateDemoConflict = () =>
 export const listCommits = () => apiClient.get("/api/dev-collab/commits");
 export const githubStatus = () => apiClient.get("/api/dev-collab/github/status");
 export const githubSync = () => apiClient.post("/api/dev-collab/github/sync", null, { timeout: 45000 });
+export const repositoryDiscovery = (params) =>
+  apiClient.post("/api/dev-collab/repository/discovery", null, { params, timeout: 60000 });
 
 // ---------- AIOps ----------
 export const ingestMetrics = (payload) => apiClient.post("/api/incidents/ingest-metrics", payload);
@@ -50,6 +52,8 @@ export const listIncidents = () => apiClient.get("/api/incidents/");
 export const healthCheck = () => apiClient.get("/api/system/health");
 export const getStats = () => apiClient.get("/api/system/stats");
 export const getKnowledgeBase = () => apiClient.get("/api/system/knowledge-base");
+export const searchKnowledgeBase = (query) =>
+  apiClient.get("/api/system/knowledge-base/search", { params: { q: query } });
 export const toggleLlmFailure = (enabled) => apiClient.post(`/api/system/toggle-llm-failure?enabled=${enabled}`);
 export const getLlmFailureStatus = () => apiClient.get("/api/system/llm-failure-status");
 export const getDecisionLog = () => apiClient.get("/api/system/decision-log");

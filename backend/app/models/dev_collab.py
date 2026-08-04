@@ -47,6 +47,10 @@ class ConflictEvent(Base):
     source_url: Mapped[str] = mapped_column(String(500), nullable=True)
     ai_suggestion: Mapped[str] = mapped_column(Text, nullable=True)
     code_review_notes: Mapped[str] = mapped_column(Text, nullable=True)
+    discovery_context: Mapped[str] = mapped_column(Text, nullable=True)
+    semantic_analysis: Mapped[str] = mapped_column(Text, nullable=True)
+    quality_report: Mapped[str] = mapped_column(Text, nullable=True)
+    resolution_options: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     resolved_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 

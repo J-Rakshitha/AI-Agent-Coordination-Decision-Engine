@@ -2,6 +2,7 @@
 Dev-Collaboration Module API routes.
 Prefix: /api/dev-collab
 """
+import json
 import random
 import secrets
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from app.models.dev_collab import Developer, ConflictEvent, CommitLog
 from app.agents.dev_collab.code_watch_agent import CodeWatchAgent
 from app.agents.dev_collab.conflict_prediction_agent import OverlapDetectionAgent, ConflictPredictionAgent
 from app.agents.dev_collab.resolution_suggestion_agent import ResolutionSuggestionAgent
+from app.agents.dev_collab.resolution_synthesizer_agent import ResolutionSynthesizerAgent
+from app.agents.dev_collab.repository_discovery_agent import RepositoryDiscoveryAgent
 from app.agents.dev_collab.github_integration_agent import GitHubIntegrationAgent
 from app.agents.coordinator_agent import CoordinatorAgent
 from app.agents.notification_agent import NotificationAgent
@@ -170,9 +173,22 @@ async def list_conflicts(db: AsyncSession = Depends(get_db)):
             "source_url": c.source_url,
             "ai_suggestion": c.ai_suggestion,
             "code_review_notes": c.code_review_notes,
+            "discovery_context": _parse_json_field(c.discovery_context),
+            "semantic_analysis": _parse_json_field(c.semantic_analysis),
+            "quality_report": _parse_json_field(c.quality_report),
+            "resolution_options": _parse_json_field(c.resolution_options),
             "created_at": c.created_at,
         })
     return output
+
+
+def _parse_json_field(raw: str | None):
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
 
 
 @router.post("/conflicts/{conflict_id}/suggest-resolution")
@@ -187,11 +203,25 @@ async def suggest_resolution(conflict_id: int, db: AsyncSession = Depends(get_db
     dev_a_name = dev_a.name if dev_a else "Developer A"
     dev_b_name = dev_b.name if dev_b else "Developer B"
 
+    semantic = _parse_json_field(conflict.semantic_analysis) or {}
+    quality = _parse_json_field(conflict.quality_report) or {}
+
+    synth = await ResolutionSynthesizerAgent.synthesize(
+        db,
+        dev_a_name,
+        dev_b_name,
+        conflict.file_path,
+        conflict.function_name,
+        semantic_analysis=semantic if isinstance(semantic, dict) else None,
+        quality_report=quality if isinstance(quality, dict) else None,
+    )
+    conflict.resolution_options = json.dumps(synth["options"])
+
     result = await ResolutionSuggestionAgent.suggest(
         db, dev_a_name, dev_b_name, conflict.file_path, conflict.function_name
     )
 
-    conflict.ai_suggestion = result["suggestion"]
+    conflict.ai_suggestion = synth["suggestion"] or result["suggestion"]
     conflict.status = "resolved"
     conflict.resolved_at = datetime.utcnow()
     db.add(conflict)
@@ -220,10 +250,23 @@ async def suggest_resolution(conflict_id: int, db: AsyncSession = Depends(get_db
     )
 
     await manager.broadcast("conflict_resolved", {
-        "conflict_id": conflict.id, "suggestion": result["suggestion"], "used_llm": result["used_llm"],
+        "conflict_id": conflict.id,
+        "suggestion": conflict.ai_suggestion,
+        "used_llm": result["used_llm"],
     })
 
-    return {"conflict_id": conflict.id, **result}
+    return {"conflict_id": conflict.id, **result, "synthesizer": synth}
+
+
+@router.post("/repository/discovery")
+async def repository_discovery(
+    file_path: str | None = None,
+    function_name: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Phase 1 — AST repository discovery and symbol indexing."""
+    result = await RepositoryDiscoveryAgent.discover(db, file_path, function_name)
+    return result
 
 
 @router.get("/commits")

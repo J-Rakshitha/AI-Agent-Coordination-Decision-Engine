@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.database import Base
 
 # Import all models so autogenerate / metadata is complete.
-from app.models import dev_collab, incident, memory, tool_execution, monitoring, user, notification  # noqa: F401
+from app.models import dev_collab, incident, memory, tool_execution, monitoring, user, notification, enterprise  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
