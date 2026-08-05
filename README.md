@@ -1,4 +1,4 @@
-# Development of Enterprise Workflow Platform with Decision Automation System
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/5dc30586-9fac-441a-993d-4fd38a85300c" /># Development of Enterprise Workflow Platform with Decision Automation System
 
 A unified multi-agent system that coordinates two phases of the Software
 Development Lifecycle under one Decision Engine:
@@ -15,7 +15,7 @@ Development Lifecycle under one Decision Engine:
 
 Built for: Infosys Springboard Virtual Internship 7.0 — Batch 1.
 
-**GitHub:** [J-Rakshitha/AI-Agent-Coordination-Decision-Engine](https://github.com/J-Rakshitha/AI-Agent-Coordination-Decision-Engine)
+**GitHub:** [J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System](https://github.com/J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System)
 
 ---
 
@@ -336,7 +336,7 @@ Test endpoints: `POST /api/system/test-email`, `POST /api/system/test-discord-we
 ## Project Structure
 
 ```
-ai-agent-coordination-engine/
+Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py
@@ -613,8 +613,7 @@ From the project root (never commits `.env` — it is gitignored):
 git add -A; git commit -m "Enterprise 5-phase intelligence: Discovery, Semantic, Synthesizer, Quality, RAG — 55 tests"; git push origin main
 ```
 
-Repo: [J-Rakshitha/AI-Agent-Coordination-Decision-Engine](https://github.com/J-Rakshitha/AI-Agent-Coordination-Decision-Engine)
-
+Repo:  [J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System](https://github.com/J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System)
 ---
 
 ## Build Plan
@@ -631,7 +630,7 @@ Repo: [J-Rakshitha/AI-Agent-Coordination-Decision-Engine](https://github.com/J-R
 - [x] **Enterprise E1–E5** — Repository Discovery, Semantic Analysis, Synthesizer, Quality, RAG Search
 - [x] **55 automated tests** — full suite green from project root
 - [x] Milestone documents updated (Sprint 3: 27-Jul to 04-Aug-2026)
-- [x] GitHub push — [repo live](https://github.com/J-Rakshitha/AI-Agent-Coordination-Decision-Engine)
+- [x] GitHub push — [repo live](https://github.com/J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System)
 - [ ] Render/Vercel deployment
 - [ ] Final demo rehearsal
 
