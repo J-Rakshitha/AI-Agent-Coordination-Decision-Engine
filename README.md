@@ -1,4 +1,4 @@
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/5dc30586-9fac-441a-993d-4fd38a85300c" /># Development of Enterprise Workflow Platform with Decision Automation System
+
 
 A unified multi-agent system that coordinates two phases of the Software
 Development Lifecycle under one Decision Engine:
