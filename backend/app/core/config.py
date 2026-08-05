@@ -1,5 +1,5 @@
 """
-Central configuration for the AI Agent Coordination & Decision Engine.
+Central configuration for the Development of Enterprise Workflow Platform with Decision Automation System.
 Loads values from environment variables / .env file.
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # App
-    APP_NAME: str = "AI Agent Coordination & Decision Engine"
+    APP_NAME: str = "Development of Enterprise Workflow Platform with Decision Automation System"
     ENV: str = "development"
     DEBUG: bool = True
 

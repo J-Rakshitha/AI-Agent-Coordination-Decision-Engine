@@ -24,7 +24,7 @@ export default function Header({ connected }) {
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-devcollab to-accent-aiops" />
         <div>
           <h1 className="font-display text-sm font-semibold tracking-wide text-ink-primary">
-            AI Agent Coordination & Decision Engine
+            Development of Enterprise Workflow Platform with Decision Automation System
           </h1>
           <p className="text-xs text-ink-muted">Dev-Collaboration + AIOps, unified</p>
         </div>

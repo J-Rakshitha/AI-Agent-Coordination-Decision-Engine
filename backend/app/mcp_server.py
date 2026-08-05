@@ -25,7 +25,7 @@ from app.services.monitoring_scheduler import get_monitor_targets
 from app.core.config import settings
 
 mcp = FastMCP(
-    "AI Agent Coordination Engine",
+    "Development of Enterprise Workflow Platform with Decision Automation System",
     instructions=(
         "Enterprise multi-agent coordination engine for Dev-Collaboration "
         "conflict prevention and AIOps incident response. Tools mirror the "

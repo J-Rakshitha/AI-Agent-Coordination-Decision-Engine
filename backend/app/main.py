@@ -1,5 +1,5 @@
 """
-AI Agent Coordination & Decision Engine — Backend Entrypoint
+Development of Enterprise Workflow Platform with Decision Automation System — Backend Entrypoint
 ===============================================================
 Run locally with:
     uvicorn app.main:app --reload --port 8000

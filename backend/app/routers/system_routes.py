@@ -93,7 +93,7 @@ async def test_teams_webhook(body: TeamsWebhookTestIn | None = None):
             status_code=400,
             detail="TEAMS_WEBHOOK_URL is not set. Paste your Teams/Power Automate webhook URL in backend/.env or pass it in the request body.",
         )
-    subject = "[AI Agent Engine] Teams webhook test"
+    subject = f"[{settings.APP_NAME}] Teams webhook test"
     message = "If you see this in Teams, PART 3 is configured correctly."
     delivered = NotificationAgent.send_teams_webhook(test_url, subject, message)
     if not delivered:
@@ -113,7 +113,7 @@ async def test_discord_webhook(body: WebhookTestIn | None = None):
             status_code=400,
             detail="DISCORD_WEBHOOK_URL is not set. Paste your Discord webhook URL in backend/.env or pass it in the request body.",
         )
-    subject = "[AI Agent Engine] Discord webhook test"
+    subject = f"[{settings.APP_NAME}] Discord webhook test"
     message = "If you see this in Discord, Discord alerts are configured correctly."
     delivered = NotificationAgent.send_discord_webhook(test_url, subject, message)
     if not delivered:
@@ -136,7 +136,7 @@ async def test_email():
             ),
         )
     recipient = NotificationAgent.team_email_recipients()[0]
-    subject = "[AI Agent Engine] Gmail SMTP test"
+    subject = f"[{settings.APP_NAME}] Gmail SMTP test"
     message = "If you received this email, Gmail SMTP is configured correctly."
     delivered = NotificationAgent.send_email(subject, message, recipient)
     if not delivered:

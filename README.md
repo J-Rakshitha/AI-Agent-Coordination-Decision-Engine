@@ -1,4 +1,4 @@
-# AI Agent Coordination & Decision Engine
+# Development of Enterprise Workflow Platform with Decision Automation System
 
 A unified multi-agent system that coordinates two phases of the Software
 Development Lifecycle under one Decision Engine:
