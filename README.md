@@ -15,7 +15,7 @@ Development Lifecycle under one Decision Engine:
 
 Built for: Infosys Springboard Virtual Internship 7.0 — Batch 1.
 
-**GitHub:** [J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System](https://github.com/J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System)
+**GitHub:** [J-Rakshitha/AI-Agent-Coordination-Decision-Engine](https://github.com/J-Rakshitha/AI-Agent-Coordination-Decision-Engine)
 
 ---
 
@@ -89,8 +89,40 @@ to rule-based logic. The demo NEVER crashes.
 | **D** | MCP Layer — industry-standard tool exposure via Model Context Protocol | ✅ Complete |
 | **M3** | Agent Coordination & Memory — specialized agents, shared memory, cross-module linking | ✅ Complete |
 | **E1–E5** | Enterprise Intelligence — AST Discovery, Semantic Analysis, Synthesizer, Quality, RAG Search | ✅ Complete |
+| **E6** | Enterprise Workflow — HITL, mandatory auth, per-user GitHub repo, chat sessions | ✅ Complete |
 
-### Enterprise Intelligence Phases (E1–E5) ✅
+### Enterprise Workflow (E6) — Evaluator Feedback ✅
+
+Sir feedback implemented for production-style user workflows:
+
+| Feature | What it does |
+|---------|--------------|
+| **Mandatory Sign In** | Branded full-screen login page first → Overview dashboard after auth |
+| **Human-in-the-Loop (HITL)** | AI suggests resolution → user **Approve / Reject / Resolve Later** — no auto-resolve |
+| **Undo** | Revert last conflict action (reject, approve, defer) |
+| **User tracking** | Conflicts show **"Resolved by Priya Sharma"** — per signed-in user |
+| **Per-user GitHub repo** | Submit repo URL → auto-scan → recheck (`UserRepo` table) |
+| **Chat history** | ChatGPT-style sessions on Overview with follow-up Q&A |
+| **Decision Trail removed from UI** | Agent log hidden from users; Coordinator still logs server-side |
+| **Notification Agent** | Background service (Slack/email/WebSocket) — not a user-facing agent |
+
+**HITL conflict flow:**
+```
+Detect → Get AI Suggestion (pending_approval) → User Approve/Reject/Later → Resolved + Commit
+```
+
+**New API endpoints (E6):**
+- `POST /api/dev-collab/conflicts/{id}/approve` — HITL approve + create commit
+- `POST /api/dev-collab/conflicts/{id}/reject` — reject AI suggestion
+- `POST /api/dev-collab/conflicts/{id}/resolve-later` — defer decision
+- `POST /api/dev-collab/conflicts/{id}/undo` — undo last action
+- `GET /api/dev-collab/conflicts/{id}/audit` — action audit trail
+- `POST /api/dev-collab/repo/submit` — per-user GitHub repo connect + scan
+- `GET /api/dev-collab/repo/mine` — current user's connected repo
+- `POST /api/dev-collab/repo/recheck` — rescan connected repo
+- `GET/POST /api/chat/sessions`, `/messages`, `/ask` — long-term chat memory
+
+**Migration:** `003_enterprise_workflow_hitl.py` — `user_repos`, `conflict_action_logs`, `chat_sessions`, `chat_messages`
 
 Real-time, non-hardcoded enterprise pipeline for Dev-Collaboration conflicts:
 
@@ -142,9 +174,9 @@ single-purpose scripts.
 | **Tool Selector Agent** | AIOps | Picks the best remediation tool for the situation |
 | **Tool Executor Agent** | AIOps | Invokes tools with exception-safe execution |
 | **External Lookup Agent** | AIOps | Searches GitHub public issues for known patterns |
-| **Notification Agent** | Both | Delivers team alerts (WebSocket + Gmail SMTP + Slack + Discord + Teams) |
+| **Notification Agent** | Both | Background service — Slack/email/WebSocket alerts (not user-facing) |
+| **Memory Agent** | Both | Background service — short/long-term shared memory (not user-facing) |
 | **Coordinator Agent** | Both | Logs all decisions + links Dev conflicts → Production incidents |
-| **Memory Agent** | Both | Manages short-term and long-term shared memory |
 
 #### Agent Communication Patterns
 
@@ -178,19 +210,20 @@ Repeated patterns reinforce entries (`success_count` increments).
 
 | Page | Panel | What it shows |
 |------|-------|---------------|
-| **Overview** | Stat cards | Active Sessions, Conflicts, Open Incidents, Linked Incidents |
-| **Overview** | Shared Knowledge Base | Long-term memory entries with `seen N×` reinforcement |
-| **Overview** | Team Notifications | Email/WebSocket alerts from Notification Agent (live refresh) |
-| **Overview** | Agent Decision Trail | Every agent decision — LLM vs Rule-based badge |
+| **Overview** | Stat cards + Welcome | Active Sessions, Conflicts, Open Incidents, Linked Incidents |
+| **Overview** | Chat History & Long-Term Memory | ChatGPT-style sessions with follow-up Q&A |
+| **Overview** | Team Notifications | Email/WebSocket alerts (live refresh) |
+| **Login** | Branded Sign In page | Full-screen login before dashboard (mandatory) |
+| **Dev-Collaboration** | Connect Your GitHub Repository | Per-user repo submit + auto-scan + recheck |
 | **Dev-Collaboration** | Live Editing Map | Real-time developer presence on files/functions |
-| **Dev-Collaboration** | Repository Discovery panel | Phase E1 — real AST scan of codebase |
-| **Dev-Collaboration** | Predicted Conflicts | Discovery + Semantic + Quality + Code Review + Synthesizer |
-| **Dev-Collaboration** | Recent Commits | Auto-created when conflicts resolve — feeds cross-module linking |
-| **Dev-Collaboration** | Real GitHub Integration | Live PR sync from configured repo (not simulated) |
+| **Dev-Collaboration** | Predicted Conflicts (HITL) | Approve / Reject / Resolve Later / Undo + user name on resolve |
+| **Dev-Collaboration** | Recent Commits | Created only after user **Approve** — feeds cross-module linking |
+| **Dev-Collaboration** | Real GitHub Integration | Live PR sync from configured org repo |
 | **AIOps** | Live Incident Feed | Severity, root cause, linked commit, **SLA countdown**, escalation status |
 | **AIOps** | Tool Integration Panel | Registered tools + measured execution accuracy |
 | **All pages** | Header — Live indicator | Green dot = WebSocket connected (real-time) |
 | **All pages** | Header — Simulate API Failure | Toggle to prove hybrid LLM fallback live on stage |
+| ~~Overview~~ | ~~Agent Decision Trail~~ | **Removed from UI** (server-side log still available via API) |
 
 **Dev-Collaboration conflict card layout (after detection):**
 ```
@@ -208,27 +241,27 @@ Repeated patterns reinforce entries (`success_count` increments).
 │  ┌─ Code Review Agent ───────────────────────────┐ │
 │  │  Style/quality advice from hybrid AI          │ │
 │  └───────────────────────────────────────────────┘ │
-│  [Get AI Suggestion] → Resolution Synthesizer (3 strategies) │
+│  [Get AI Suggestion] → Awaiting Approval badge                    │
+│  [Approve] [Reject] [Resolve Later] [Undo]                      │
 └──────────────────────────────────────────────────┘
-→ After resolution: best strategy + RESOLVED badge
+→ After **Approve**: RESOLVED + "Resolved by [User Name]" + commit
 ```
 
-### 5-Minute Live Demo Script (Milestone 3)
-
-**Recommended for evaluators:** use **GitHub Sync** (real data) instead of Simulate Conflict where possible.
+### 5-Minute Live Demo Script (Evaluator Feedback)
 
 | Step | Page | Action | What to show in UI |
 |------|------|--------|---------------------|
-| 1 | Overview | Open dashboard | Stat cards + Knowledge Base + **Team Notifications** + Decision Trail |
-| 2 | Dev-Collaboration | **Sync with GitHub** (or Simulate Conflict) | Code Review box on conflict card + agents in Decision Trail |
-| 3 | Dev-Collaboration | **Get AI Suggestion** | RESOLVED badge + Resolution Suggestion text + Recent Commits entry |
-| 4 | AIOps | **Simulate Incident** (or wait 30s for background monitor) | P1/P2 card + Tool accuracy + full agent pipeline in Decision Trail |
-| 5 | Overview | Refresh (`Ctrl+Shift+R`) | **Linked Incidents > 0** + Knowledge Base growing + new notifications |
-| 6 | Header | Toggle **Simulate API Failure** ON → repeat Step 2 | Rule-based badge in Decision Trail — system never crashes |
+| 1 | Login | Sign in as **Priya Sharma** | Branded login page → Overview dashboard |
+| 2 | Dev-Collaboration | **Submit GitHub repo URL** | Connected repo + scan results |
+| 3 | Dev-Collaboration | **Simulate Conflict** → **Get AI Suggestion** | "Awaiting Approval" — NOT auto-resolved |
+| 4 | Dev-Collaboration | Click **Approve** | "Resolved by Priya Sharma" + Recent Commits |
+| 5 | Overview | **Chat History** — ask a follow-up question | Same session continues |
+| 6 | AIOps | **Simulate Incident** | P1 card + SLA countdown + notifications |
+| 7 | Overview | Check stats | Linked Incidents > 0 + Team Notifications |
 
-**Talking point for evaluators:**
-> "A Dev-Collab conflict on `payment_service.py` was later linked to a P1 production
-> incident on `checkout-service` — the Coordinator Agent traced it back to the risky merge."
+**Talking points for evaluators:**
+> "Human-in-the-Loop — AI suggests, user approves. Every action tracked per signed-in user."
+> "Notification Agent runs as a background service — users see alerts, not agent internals."
 
 ### What's Real vs Demo (Honest Architecture Notes)
 
@@ -238,21 +271,15 @@ Repeated patterns reinforce entries (`success_count` increments).
 | WebSocket live updates | ✅ Real-time | |
 | GitHub PR conflict sync | ✅ Real API | |
 | Background server monitoring | ✅ Real HTTP probes | |
-| JWT authentication | ✅ Real | |
-| MCP tool layer | ✅ Industry standard | |
+| JWT authentication (mandatory) | ✅ Real — login required for all API routes | |
+| HITL approve/reject/undo | ✅ Real — user must approve AI suggestions | |
+| Per-user GitHub repo submit | ✅ Real — `UserRepo` table + scan | |
+| Chat sessions + follow-up | ✅ Real — `ChatSession` / `ChatMessage` tables | |
 | Hybrid LLM (Gemini) | ✅ Real when API key set | Rule-based fallback always available |
-| Short/long-term memory | ✅ Real DB-backed | |
-| Cross-module incident linking | ✅ Real correlation logic | |
-| Code Review Agent output on conflict cards | ✅ Real agent output in UI | |
-| Team Notifications panel (Overview) | ✅ Real DB records, live refresh | |
-| GitHub webhook (PR events) | ✅ Real-time auto-sync | |
-| Slack alerts | ✅ Real when `SLACK_WEBHOOK_URL` set | |
-| Discord alerts | ✅ Real when `DISCORD_WEBHOOK_URL` set | |
-| Gmail SMTP email alerts | ✅ Real when SMTP + App Password set | |
-| Microsoft Teams alerts | ✅ Real when `TEAMS_WEBHOOK_URL` set (M365 account) | |
-| SLA countdown (AIOps) | ✅ Live timer on incident cards | |
-| Alembic DB migrations | ✅ Schema updates without data loss (001 SLA + 002 enterprise) |
-| Enterprise 5-phase pipeline | ✅ Real AST + semantic + quality + RAG (not hardcoded) |
+| Slack / Discord / Gmail / Teams alerts | ✅ Real when `.env` webhooks/SMTP set | |
+| Team Notifications panel | ✅ Real DB records, live WebSocket refresh | |
+| Alembic DB migrations | ✅ 001 SLA + 002 enterprise + **003 HITL/workflow** | |
+| Enterprise E1–E5 pipeline | ✅ Real AST + semantic + quality + RAG | |
 | **Simulate Conflict** button | | ⚠️ Demo trigger (random file/function) |
 | **Simulate Incident** button | | ⚠️ Demo trigger (random metrics) |
 | Runbook tools (restart/clear cache) | | ⚠️ Simulated actions (safe for demo) |
@@ -275,8 +302,9 @@ In production, replace them with real metric pipelines and GitHub webhooks.
 - Auto-triggers incident pipeline on anomalies
 - Endpoints: `GET /api/monitoring/status`, `GET /api/monitoring/history/{service_name}`
 
-### Phase C — Multi-user Login
-- JWT-based authentication (register, login, profile)
+### Phase C — Multi-user Login (Mandatory)
+- JWT-based authentication — **sign in required** before dashboard
+- Branded full-screen **LoginPage** → Overview after successful auth
 - Demo users seeded on startup:
 
 | Email | Password | Role |
@@ -285,8 +313,8 @@ In production, replace them with real metric pipelines and GitHub webhooks.
 | `arjun@infosys.com` | `demo123` | developer |
 | `admin@infosys.com` | `admin123` | admin |
 
-- Endpoints: `POST /api/auth/login`, `GET /api/auth/me`, `GET /api/auth/users`
-- UI: optional Sign In modal in header (app works without login too)
+- Endpoints: `POST /api/auth/login`, `POST /api/auth/register`, `GET /api/auth/me`, `GET /api/auth/users`
+- All protected routes require `Authorization: Bearer <token>` header
 
 ### Phase D — MCP Layer
 - Exposes all enterprise tools via [Model Context Protocol](https://modelcontextprotocol.io)
@@ -342,36 +370,37 @@ Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System/
 │   │   ├── main.py
 │   │   ├── mcp_server.py                 # Phase D — MCP tool layer
 │   │   ├── core/                           # config, database, security, deps
-│   │   ├── models/                         # dev_collab, incident, memory, notification, user
+│   │   ├── models/                         # dev_collab, incident, memory, notification, user, workflow
 │   │   ├── agents/
 │   │   │   ├── coordinator_agent.py        # M3 — orchestrator + cross-module linking
-│   │   │   ├── memory_agent.py             # M3 — short/long-term memory
-│   │   │   ├── notification_agent.py       # M3 — WebSocket + email alerts
+│   │   │   ├── memory_agent.py             # Background service — short/long-term memory
+│   │   │   ├── notification_agent.py       # Background service — WebSocket + email + Slack
 │   │   │   ├── dev_collab/                 # Discovery, Semantic, Quality, Synthesizer, Conflict agents
 │   │   │   ├── aiops/                      # Monitoring, Root Cause, Severity, Escalation agents
 │   │   │   └── tools/                      # Tool Registry + Selector + Executor (8 tools)
-│   │   ├── routers/                        # auth, monitoring, incidents, dev-collab, system
-│   │   └── services/                       # code_parser, embedding_service, github_sync_service
-│   ├── alembic/versions/                   # 001 SLA + 002 enterprise intelligence
+│   │   ├── routers/                        # auth, chat, monitoring, incidents, dev-collab, system
+│   │   └── services/                       # hitl_service, repo_service, chat_service, github_sync
+│   ├── alembic/versions/                   # 001 SLA + 002 enterprise + 003 HITL/workflow
 │   ├── tests/
+│   │   ├── test_enterprise_workflow.py     # HITL, chat, auth — 3 tests
 │   │   ├── test_enterprise_phase5.py       # E1–E5 enterprise — 6 tests
 │   │   ├── test_milestone3.py              # M3 coordination, memory, notifications
-│   │   └── ...                             # 55 tests total
+│   │   └── ...                             # 60 tests total
 │   ├── run.ps1                             # Windows one-click backend start
 │   ├── requirements.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── pages/
-│   │   │   ├── OverviewPage.jsx            # Stats + Knowledge Base + Notifications
-│   │   │   ├── DevCollabPage.jsx           # Conflicts + Code Review + GitHub sync
+│   │   │   ├── LoginPage.jsx               # Branded mandatory sign-in
+│   │   │   ├── OverviewPage.jsx            # Stats + Chat History + Notifications
+│   │   │   ├── DevCollabPage.jsx           # HITL conflicts + Repo submit + GitHub sync
 │   │   │   └── AIOpsPage.jsx               # Incidents + Tool Integration panel
 │   │   ├── components/common/
-│   │   │   ├── DecisionTrail.jsx           # Explainable-AI agent log
-│   │   │   ├── KnowledgeBasePanel.jsx      # Long-term memory visualization
+│   │   │   ├── ChatHistoryPanel.jsx        # ChatGPT-style long-term chat
+│   │   │   ├── RepoSubmitPanel.jsx         # Per-user GitHub repo connect
 │   │   │   ├── NotificationsPanel.jsx      # Team alerts (WebSocket + email log)
 │   │   │   ├── ToolIntegrationPanel.jsx    # Tool registry + accuracy stats
-│   │   │   ├── LlmFailureToggle.jsx        # Hybrid AI fallback demo toggle
-│   │   │   └── LoginModal.jsx              # Phase C — JWT login
+│   │   │   └── LlmFailureToggle.jsx        # Hybrid AI fallback demo toggle
 │   │   └── context/                        # AuthContext, LiveSocketContext, ThemeContext
 │   ├── run.ps1                             # Windows one-click frontend start
 │   └── package.json
@@ -396,7 +425,7 @@ cd frontend
 .\run.ps1
 ```
 
-Open **http://localhost:5173** — green **Live** dot in header confirms WebSocket connected.
+Open **http://localhost:5173** — branded Sign In page appears first. After login, green **Live** dot in header confirms WebSocket connected.
 
 ---
 
@@ -483,7 +512,7 @@ python -m pytest -v
 
 # Or from backend directory
 cd backend
-python -m pytest -v                  # Full suite — 55 tests
+python -m pytest -v                  # Full suite — 60 tests
 python -m pytest tests/test_enterprise_phase5.py -v   # Enterprise E1–E5 — 6 tests
 python -m pytest tests/test_milestone3.py -v   # Milestone 3 only — 6 tests
 python -m pytest tests/test_enterprise_integrations.py -v   # SLA, webhook, Slack, Discord, Gmail — 14 tests
@@ -501,6 +530,9 @@ You can also run migrations manually:
 
 ```bash
 cd backend
+# Windows (venv alembic):
+C:\Users\akula\venv\coord-engine\Scripts\alembic.exe upgrade head
+# Or if alembic on PATH:
 alembic upgrade head
 ```
 
@@ -521,9 +553,8 @@ The backend recreates all tables automatically on startup.
 |-------|-------------|----------|
 | Backend health | http://localhost:8000/api/system/health | `{"status":"ok"}` |
 | API docs | http://localhost:8000/docs | Swagger UI loads |
-| Dashboard | http://localhost:5173 | UI loads, green Live dot |
-| Notifications API | http://localhost:8000/api/system/notifications | JSON array |
-| Full test suite | `python -m pytest -v` (project root or backend) | **55 passed** |
+| Dashboard | http://localhost:5173 | Branded login → Overview after sign in |
+| Full test suite | `python -m pytest -v` (project root or backend) | **60 passed** |
 
 ---
 
@@ -568,8 +599,23 @@ The backend recreates all tables automatically on startup.
 | POST | `/api/dev-collab/simulate-demo-conflict` | One-click demo conflict scenario |
 | POST | `/api/dev-collab/repository/discovery` | Phase E1 — AST repository discovery |
 | GET | `/api/dev-collab/conflicts` | List conflicts (discovery, semantic, quality JSON fields) |
-| POST | `/api/dev-collab/conflicts/{id}/suggest-resolution` | Hybrid-AI resolution suggestion |
+| POST | `/api/dev-collab/conflicts/{id}/suggest-resolution` | AI suggestion → `pending_approval` (HITL) |
+| POST | `/api/dev-collab/conflicts/{id}/approve` | User approves → resolved + commit |
+| POST | `/api/dev-collab/conflicts/{id}/reject` | User rejects AI suggestion |
+| POST | `/api/dev-collab/conflicts/{id}/resolve-later` | Defer decision |
+| POST | `/api/dev-collab/conflicts/{id}/undo` | Undo last conflict action |
+| POST | `/api/dev-collab/repo/submit` | Connect + scan user's GitHub repo |
+| GET | `/api/dev-collab/repo/mine` | Current user's connected repo |
+| POST | `/api/dev-collab/repo/recheck` | Rescan connected repo |
 | GET | `/api/dev-collab/commits` | Commit history (used for cross-module linking) |
+
+### Chat (Long-Term Memory)
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/chat/sessions` | List user's chat sessions |
+| POST | `/api/chat/sessions` | Create new session |
+| GET | `/api/chat/sessions/{id}/messages` | Session message history |
+| POST | `/api/chat/sessions/{id}/ask` | Ask follow-up question |
 
 ### AIOps & Tools
 | Method | Path | Purpose |
@@ -601,19 +647,22 @@ The backend recreates all tables automatically on startup.
 | LangChain configured | HybridAIClient via **google-genai** SDK (AIza + AQ auth keys) |
 | Custom enterprise tools & API connectors | `tool_registry.py` — **8 registered tools** |
 | Intelligent tool selection | `ToolSelectorAgent` — LLM + keyword fallback + short-term memory |
-| Testing | **55 pytest tests** — `python -m pytest -v` |
+| Human-in-the-Loop workflow | Approve/Reject/Undo on conflicts — user has final authority |
+| Per-user GitHub repo | Repo submit + auto-scan per signed-in user |
+| ChatGPT-style chat history | Chat sessions with follow-up Q&A on Overview |
+| Testing | **60 pytest tests** — `python -m pytest -v` |
 
 ---
 
-## Push to GitHub (one shot)
+## Push to GitHub (one command)
 
 From the project root (never commits `.env` — it is gitignored):
 
 ```powershell
-git add -A; git commit -m "Enterprise 5-phase intelligence: Discovery, Semantic, Synthesizer, Quality, RAG — 55 tests"; git push origin main
+git add -A; git commit -m "Enterprise workflow E6: HITL, mandatory auth, chat history, repo submit — 60 tests"; git push origin main
 ```
 
-Repo:  [J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System](https://github.com/J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System)
+Repo: [J-Rakshitha/AI-Agent-Coordination-Decision-Engine](https://github.com/J-Rakshitha/AI-Agent-Coordination-Decision-Engine)
 ---
 
 ## Build Plan
@@ -628,9 +677,11 @@ Repo:  [J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Au
 - [x] Milestone 3 UI — Code Review on conflict cards + Team Notifications panel
 - [x] Enterprise polish — Alembic migrations, SLA countdown UI, GitHub webhook, Slack/Discord/Gmail alerts
 - [x] **Enterprise E1–E5** — Repository Discovery, Semantic Analysis, Synthesizer, Quality, RAG Search
-- [x] **55 automated tests** — full suite green from project root
+- [x] **Enterprise E6** — HITL, mandatory auth, branded login, chat history, per-user repo
+- [x] **60 automated tests** — full suite green from project root
+- [x] Branded LoginPage + Decision Trail removed from UI
 - [x] Milestone documents updated (Sprint 3: 27-Jul to 04-Aug-2026)
-- [x] GitHub push — [repo live](https://github.com/J-Rakshitha/Development-of-Enterprise-Workflow-Platform-with-Decision-Automation-System)
+- [x] GitHub push — [repo live](https://github.com/J-Rakshitha/AI-Agent-Coordination-Decision-Engine)
 - [ ] Render/Vercel deployment
 - [ ] Final demo rehearsal
 
