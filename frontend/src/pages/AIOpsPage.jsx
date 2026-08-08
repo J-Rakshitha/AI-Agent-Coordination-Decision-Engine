@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ServerCog, RefreshCw, Sparkles, Loader2, GitCommit, ExternalLink } from "lucide-react";
 import { listIncidents, simulateIncident } from "../services/apiClient";
 import { useLiveSocketContext } from "../context/LiveSocketContext";
-import DecisionTrail from "../components/common/DecisionTrail";
 import ToolIntegrationPanel from "../components/common/ToolIntegrationPanel";
 import SlaCountdown from "../components/common/SlaCountdown";
 
@@ -48,9 +47,8 @@ export default function AIOpsPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-6">
-      <div className="lg:col-span-2 space-y-4">
-        <div className="bg-base-surface border border-base-border rounded-xl p-4">
+    <div className="space-y-4 p-6">
+      <div className="bg-base-surface border border-base-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-ink-primary flex items-center gap-2">
               <ServerCog size={16} className="text-accent-aiops" />
@@ -137,12 +135,7 @@ export default function AIOpsPage() {
           </div>
         </div>
 
-        <ToolIntegrationPanel />
-      </div>
-
-      <div className="lg:col-span-1">
-        <DecisionTrail />
-      </div>
+      <ToolIntegrationPanel />
     </div>
   );
 }

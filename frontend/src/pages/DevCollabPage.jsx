@@ -1,19 +1,23 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { GitBranch, AlertTriangle, Sparkles, Loader2, RefreshCw, GitCommit, Github, ExternalLink, FileSearch, ScanSearch, Brain, Award, Layers } from "lucide-react";
+import { GitBranch, AlertTriangle, Sparkles, Loader2, RefreshCw, GitCommit, Github, ExternalLink, FileSearch, ScanSearch, Brain, Award, Layers, Check, X, Clock, Undo2 } from "lucide-react";
 import {
   getActiveSessions,
   listConflicts,
   simulateDemoConflict,
   suggestResolution,
+  approveConflict,
+  rejectConflict,
+  deferConflict,
+  undoConflictAction,
   listCommits,
   githubStatus,
   githubSync,
   repositoryDiscovery,
 } from "../services/apiClient";
 import { useLiveSocketContext } from "../context/LiveSocketContext";
-import DecisionTrail from "../components/common/DecisionTrail";
+import RepoSubmitPanel from "../components/common/RepoSubmitPanel";
 
-const EVENTS_THAT_REFRESH = ["edit_session_started", "edit_session_ended", "conflict_detected", "conflict_resolved"];
+const EVENTS_THAT_REFRESH = ["edit_session_started", "edit_session_ended", "conflict_detected", "conflict_resolved", "conflict_suggestion_ready", "conflict_updated", "repo_scanned"];
 
 function riskColor(score) {
   if (score >= 70) return "bg-red-500";
@@ -29,6 +33,7 @@ export default function DevCollabPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [simulating, setSimulating] = useState(false);
   const [suggestingId, setSuggestingId] = useState(null);
+  const [hitlBusy, setHitlBusy] = useState(null);
   const [github, setGithub] = useState({ configured: false, repo: null });
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
@@ -138,9 +143,27 @@ export default function DevCollabPage() {
     }
   }
 
+  async function handleHitl(conflictId, action) {
+    setHitlBusy(`${conflictId}-${action}`);
+    try {
+      const actions = {
+        approve: approveConflict,
+        reject: rejectConflict,
+        defer: deferConflict,
+        undo: undoConflictAction,
+      };
+      await actions[action](conflictId);
+      loadData();
+    } catch {
+      // Non-fatal: card stays as-is if HITL action fails.
+    } finally {
+      setHitlBusy(null);
+    }
+  }
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-6">
-      <div className="lg:col-span-2 space-y-4">
+    <div className="space-y-4 p-6">
+      <RepoSubmitPanel onScanned={loadData} />
 
         {/* Enterprise Repository Discovery */}
         <div className="bg-base-surface border border-base-border rounded-xl p-4">
@@ -314,6 +337,11 @@ export default function DevCollabPage() {
                     >
                       {c.status}
                     </span>
+                    {c.approval_status && (
+                      <span className="uppercase tracking-wide text-[10px] px-2 py-0.5 rounded-full bg-accent-devcollab/15 text-accent-devcollab">
+                        {c.approval_status.replace(/_/g, " ")}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <p className="text-xs text-ink-muted font-mono mb-2">
@@ -415,6 +443,44 @@ export default function DevCollabPage() {
                     <p className="text-xs text-ink-secondary leading-relaxed border-l-2 border-accent-devcollab pl-2">
                       {c.ai_suggestion}
                     </p>
+                    {c.approval_status === "pending_approval" && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => handleHitl(c.id, "approve")}
+                          disabled={!!hitlBusy}
+                          className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md bg-accent-success/15 text-accent-success hover:bg-accent-success/25 transition-colors disabled:opacity-50"
+                        >
+                          {hitlBusy === `${c.id}-approve` ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleHitl(c.id, "reject")}
+                          disabled={!!hitlBusy}
+                          className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors disabled:opacity-50"
+                        >
+                          {hitlBusy === `${c.id}-reject` ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => handleHitl(c.id, "defer")}
+                          disabled={!!hitlBusy}
+                          className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md bg-accent-warning/15 text-accent-warning hover:bg-accent-warning/25 transition-colors disabled:opacity-50"
+                        >
+                          {hitlBusy === `${c.id}-defer` ? <Loader2 size={12} className="animate-spin" /> : <Clock size={12} />}
+                          Resolve Later
+                        </button>
+                      </div>
+                    )}
+                    {["approved", "rejected", "deferred"].includes(c.approval_status) && (
+                      <button
+                        onClick={() => handleHitl(c.id, "undo")}
+                        disabled={!!hitlBusy}
+                        className="mt-2 flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md bg-base-border/50 text-ink-muted hover:bg-base-border transition-colors disabled:opacity-50"
+                      >
+                        {hitlBusy === `${c.id}-undo` ? <Loader2 size={12} className="animate-spin" /> : <Undo2 size={12} />}
+                        Undo last action
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <button
@@ -425,6 +491,12 @@ export default function DevCollabPage() {
                     {suggestingId === c.id ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                     Get AI Suggestion
                   </button>
+                )}
+
+                {c.resolved_by_name && (
+                  <p className="text-[11px] text-accent-success mt-2">
+                    Resolved by {c.resolved_by_name}
+                  </p>
                 )}
               </div>
             ))}
@@ -455,11 +527,6 @@ export default function DevCollabPage() {
             ))}
           </div>
         </div>
-      </div>
-
-      <div className="lg:col-span-1">
-        <DecisionTrail />
-      </div>
     </div>
   );
 }

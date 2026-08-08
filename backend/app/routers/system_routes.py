@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.core.database import get_db
+from app.core.deps import get_current_user
+from app.models.user import User
 from app.models.incident import AgentDecisionLog, Incident
 from app.models.dev_collab import FileEditSession, ConflictEvent
 from app.agents.llm.llm_client import set_simulated_failure, get_simulated_failure
@@ -160,7 +162,10 @@ async def health_check():
 
 
 @router.get("/stats")
-async def get_stats(db: AsyncSession = Depends(get_db)):
+async def get_stats(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Aggregate counts for the Overview dashboard's stat cards."""
     active_sessions = await db.scalar(
         select(func.count()).select_from(FileEditSession).where(FileEditSession.is_active == True)  # noqa: E712
@@ -181,7 +186,10 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/knowledge-base")
-async def get_knowledge_base(db: AsyncSession = Depends(get_db)):
+async def get_knowledge_base(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Shared Knowledge & Memory Management (long-term memory) — the persistent
     insights agents have built up over time. Exposed as a REST endpoint so
@@ -200,7 +208,10 @@ async def get_knowledge_base(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/notifications")
-async def get_notifications(db: AsyncSession = Depends(get_db)):
+async def get_notifications(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Team notification log — WebSocket + email delivery records from the Notification Agent."""
     entries = await NotificationAgent.list_recent(db)
     return [
@@ -221,7 +232,11 @@ async def get_notifications(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/knowledge-base/search")
-async def search_knowledge_base(q: str = "", db: AsyncSession = Depends(get_db)):
+async def search_knowledge_base(
+    q: str = "",
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Phase 5 — Semantic RAG search over knowledge base and agent decision history.
     """
@@ -231,7 +246,10 @@ async def search_knowledge_base(q: str = "", db: AsyncSession = Depends(get_db))
 
 
 @router.post("/toggle-llm-failure")
-async def toggle_llm_failure(enabled: bool):
+async def toggle_llm_failure(
+    enabled: bool,
+    user: User = Depends(get_current_user),
+):
     """
     Demo control: force every agent to use the rule-based fallback,
     to prove live on stage that the system never crashes even if the

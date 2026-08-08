@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.deps import get_current_user
+from app.models.user import User
 from app.agents.tools.tool_registry import list_tools_public
 from app.agents.tools.tool_executor_agent import ToolExecutorAgent
 # Importing this module populates the tool registry as a side effect.
@@ -25,13 +27,17 @@ class SelectAndExecuteRequest(BaseModel):
 
 
 @router.get("/")
-async def list_tools_endpoint():
+async def list_tools_endpoint(user: User = Depends(get_current_user)):
     """The custom enterprise tools/API connectors this system can invoke."""
     return list_tools_public()
 
 
 @router.post("/select-and-execute")
-async def select_and_execute(payload: SelectAndExecuteRequest, db: AsyncSession = Depends(get_db)):
+async def select_and_execute(
+    payload: SelectAndExecuteRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Given a natural-language situation, intelligently selects and invokes
     the best matching tool, with full exception handling — this call can
@@ -50,6 +56,9 @@ async def select_and_execute(payload: SelectAndExecuteRequest, db: AsyncSession 
 
 
 @router.get("/accuracy")
-async def tool_accuracy(db: AsyncSession = Depends(get_db)):
+async def tool_accuracy(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Validate action execution accuracy — measured success rate, overall and per-tool."""
     return await ToolExecutorAgent.get_accuracy_stats(db)

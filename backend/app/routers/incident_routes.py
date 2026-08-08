@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
-from app.core.deps import get_optional_user
+from app.core.deps import get_current_user
+from app.models.user import User
 from app.schemas import MetricsSnapshotIn
 from app.models.incident import Incident
 from app.models.dev_collab import CommitLog
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/api/incidents", tags=["AIOps Incident Response"])
 async def ingest_metrics(
     payload: MetricsSnapshotIn,
     db: AsyncSession = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ):
     """Feed a real metrics snapshot through the full agent pipeline."""
     metrics = payload.model_dump()
@@ -39,7 +40,7 @@ async def ingest_metrics(
 @router.post("/simulate")
 async def simulate_incident(
     db: AsyncSession = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ):
     """Demo one-click scenario — still available alongside real background monitoring."""
     metrics = random_metrics_snapshot(force_anomaly=True)
@@ -52,7 +53,10 @@ async def simulate_incident(
 
 
 @router.get("/")
-async def list_incidents(db: AsyncSession = Depends(get_db)):
+async def list_incidents(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     result = await db.execute(select(Incident).order_by(Incident.detected_at.desc()))
     incidents = result.scalars().all()
 

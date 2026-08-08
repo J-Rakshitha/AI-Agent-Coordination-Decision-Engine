@@ -51,6 +51,12 @@ class ConflictEvent(Base):
     semantic_analysis: Mapped[str] = mapped_column(Text, nullable=True)
     quality_report: Mapped[str] = mapped_column(Text, nullable=True)
     resolution_options: Mapped[str] = mapped_column(Text, nullable=True)
+    approval_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    resolved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resolved_by_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    user_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     resolved_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 

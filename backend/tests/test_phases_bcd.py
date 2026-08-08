@@ -21,9 +21,14 @@ async def test_auth_login_demo_user(client):
     assert body["user"]["full_name"] == "Priya Sharma"
 
 
-async def test_auth_me_requires_token(client):
-    resp = await client.get("/api/auth/me")
-    assert resp.status_code == 401
+async def test_auth_me_requires_token():
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.get("/api/auth/me")
+        assert resp.status_code == 401
 
 
 async def test_auth_me_with_token(client):

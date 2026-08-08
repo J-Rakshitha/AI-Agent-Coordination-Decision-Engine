@@ -33,6 +33,19 @@ export const checkConflicts = () => apiClient.post("/api/dev-collab/check-confli
 export const listConflicts = () => apiClient.get("/api/dev-collab/conflicts");
 export const suggestResolution = (conflictId) =>
   apiClient.post(`/api/dev-collab/conflicts/${conflictId}/suggest-resolution`);
+export const approveConflict = (conflictId) =>
+  apiClient.post(`/api/dev-collab/conflicts/${conflictId}/approve`, null, { timeout: 30000 });
+export const rejectConflict = (conflictId, note = "") =>
+  apiClient.post(`/api/dev-collab/conflicts/${conflictId}/reject`, { note });
+export const deferConflict = (conflictId, note = "") =>
+  apiClient.post(`/api/dev-collab/conflicts/${conflictId}/resolve-later`, { note });
+export const undoConflictAction = (conflictId) =>
+  apiClient.post(`/api/dev-collab/conflicts/${conflictId}/undo`);
+export const submitRepo = (repoUrl) =>
+  apiClient.post("/api/dev-collab/repo/submit", { repo_url: repoUrl }, { timeout: 60000 });
+export const getMyRepo = () => apiClient.get("/api/dev-collab/repo/mine");
+export const recheckRepo = () =>
+  apiClient.post("/api/dev-collab/repo/recheck", null, { timeout: 60000 });
 // LLM + Slack notifications can take 15–20s — use a longer timeout than default 10s
 export const simulateDemoConflict = () =>
   apiClient.post("/api/dev-collab/simulate-demo-conflict", null, { timeout: 45000 });
@@ -67,5 +80,14 @@ export const testDiscordWebhook = (url) =>
 export const listTools = () => apiClient.get("/api/tools/");
 export const selectAndExecuteTool = (payload) => apiClient.post("/api/tools/select-and-execute", payload);
 export const getToolAccuracy = () => apiClient.get("/api/tools/accuracy");
+
+// ---------- Chat History (E6) ----------
+export const listChatSessions = () => apiClient.get("/api/chat/sessions");
+export const createChatSession = (title = "New conversation") =>
+  apiClient.post("/api/chat/sessions", { title });
+export const getChatMessages = (sessionId) =>
+  apiClient.get(`/api/chat/sessions/${sessionId}/messages`);
+export const askChatQuestion = (sessionId, question) =>
+  apiClient.post(`/api/chat/sessions/${sessionId}/ask`, { question });
 
 export default apiClient;

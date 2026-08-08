@@ -8,10 +8,13 @@ import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
+from app.core.deps import get_current_user
+from app.models.user import User
 from app.schemas import StartEditRequest
 from app.models.dev_collab import Developer, ConflictEvent, CommitLog
 from app.agents.dev_collab.code_watch_agent import CodeWatchAgent
@@ -21,14 +24,28 @@ from app.agents.dev_collab.resolution_synthesizer_agent import ResolutionSynthes
 from app.agents.dev_collab.repository_discovery_agent import RepositoryDiscoveryAgent
 from app.agents.dev_collab.github_integration_agent import GitHubIntegrationAgent
 from app.agents.coordinator_agent import CoordinatorAgent
+from app.agents.memory_agent import MemoryAgent
 from app.agents.notification_agent import NotificationAgent
 from app.services.synthetic_data_generator import random_edit_event
 from app.services.github_sync_service import enrich_and_notify_conflict, run_github_sync
 from app.services.github_webhook_service import GitHubWebhookService
+from app.services import hitl_service, repo_service
 from app.core.config import settings
 from app.routers.websocket_routes import manager
 
 router = APIRouter(prefix="/api/dev-collab", tags=["Dev Collaboration"])
+
+
+class RejectIn(BaseModel):
+    note: str = ""
+
+
+class DeferIn(BaseModel):
+    note: str = ""
+
+
+class RepoSubmitIn(BaseModel):
+    repo_url: str
 
 # Demo-safe developer pool used by the "Simulate Conflict" button, so a
 # presenter can trigger a realistic scenario with one click, no real
@@ -52,7 +69,11 @@ async def _enrich_and_notify_conflict(
 
 
 @router.post("/edit-session/start")
-async def start_edit_session(payload: StartEditRequest, db: AsyncSession = Depends(get_db)):
+async def start_edit_session(
+    payload: StartEditRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Register that a developer started editing a file/function (live presence)."""
     dev = await CodeWatchAgent.get_or_create_developer(db, payload.developer_name)
     session = await CodeWatchAgent.start_edit_session(
@@ -66,7 +87,11 @@ async def start_edit_session(payload: StartEditRequest, db: AsyncSession = Depen
 
 
 @router.post("/edit-session/{session_id}/end")
-async def end_edit_session_route(session_id: int, db: AsyncSession = Depends(get_db)):
+async def end_edit_session_route(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Mark an edit session as finished (developer saved/pushed their work)."""
     await CodeWatchAgent.end_edit_session(db, session_id)
     await manager.broadcast("edit_session_ended", {"session_id": session_id})
@@ -74,7 +99,10 @@ async def end_edit_session_route(session_id: int, db: AsyncSession = Depends(get
 
 
 @router.get("/active-sessions")
-async def get_active_sessions(db: AsyncSession = Depends(get_db)):
+async def get_active_sessions(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Live map of who's editing what right now."""
     sessions = await CodeWatchAgent.get_active_sessions(db)
     output = []
@@ -93,7 +121,10 @@ async def get_active_sessions(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/check-conflicts")
-async def check_conflicts(db: AsyncSession = Depends(get_db)):
+async def check_conflicts(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Runs Overlap Detection + Conflict Prediction across all active sessions.
     Risk score factors in how long the two developers have actually been
@@ -152,7 +183,10 @@ async def check_conflicts(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/conflicts")
-async def list_conflicts(db: AsyncSession = Depends(get_db)):
+async def list_conflicts(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """All predicted/resolved conflicts, newest first, with developer names resolved."""
     result = await db.execute(select(ConflictEvent).order_by(ConflictEvent.created_at.desc()))
     conflicts = result.scalars().all()
@@ -177,6 +211,9 @@ async def list_conflicts(db: AsyncSession = Depends(get_db)):
             "semantic_analysis": _parse_json_field(c.semantic_analysis),
             "quality_report": _parse_json_field(c.quality_report),
             "resolution_options": _parse_json_field(c.resolution_options),
+            "approval_status": c.approval_status,
+            "resolved_by_name": c.resolved_by_name,
+            "user_note": c.user_note,
             "created_at": c.created_at,
         })
     return output
@@ -192,8 +229,12 @@ def _parse_json_field(raw: str | None):
 
 
 @router.post("/conflicts/{conflict_id}/suggest-resolution")
-async def suggest_resolution(conflict_id: int, db: AsyncSession = Depends(get_db)):
-    """Ask the Resolution Suggestion Agent (Hybrid AI) how to resolve a specific conflict."""
+async def suggest_resolution(
+    conflict_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """AI suggests resolution — sets pending_approval; user must approve (HITL)."""
     conflict = await db.get(ConflictEvent, conflict_id)
     if not conflict:
         raise HTTPException(status_code=404, detail="Conflict not found")
@@ -222,40 +263,113 @@ async def suggest_resolution(conflict_id: int, db: AsyncSession = Depends(get_db
     )
 
     conflict.ai_suggestion = synth["suggestion"] or result["suggestion"]
-    conflict.status = "resolved"
-    conflict.resolved_at = datetime.utcnow()
+    conflict.status = "predicted"
+    conflict.approval_status = "pending_approval"
+    conflict.updated_by_user_id = user.id
     db.add(conflict)
-
-    # Record this as a "commit" that resolved a conflict — this is what
-    # the AIOps Coordinator Agent later searches when an incident happens,
-    # to trace production issues back to risky recent merges.
-    commit = CommitLog(
-        commit_hash=secrets.token_hex(4),
-        developer_id=conflict.dev_a_id,
-        file_path=conflict.file_path,
-        message=f"Merge: resolved conflict in {conflict.function_name} ({dev_a_name} & {dev_b_name})",
-        had_conflict=True,
-        created_at=datetime.utcnow(),
-    )
-    db.add(commit)
     await db.commit()
 
-    await NotificationAgent.notify_conflict_resolved(
+    await MemoryAgent.remember(
         db,
-        conflict_id=conflict.id,
-        file_path=conflict.file_path,
-        suggestion=result["suggestion"],
-        dev_a=dev_a_name,
-        dev_b=dev_b_name,
+        category="conflict_resolution",
+        key_signature=f"{conflict.file_path}:{conflict.function_name}",
+        insight=conflict.ai_suggestion or "Suggested merge resolution",
     )
 
-    await manager.broadcast("conflict_resolved", {
+    await manager.broadcast("conflict_suggestion_ready", {
         "conflict_id": conflict.id,
         "suggestion": conflict.ai_suggestion,
-        "used_llm": result["used_llm"],
+        "approval_status": "pending_approval",
     })
 
-    return {"conflict_id": conflict.id, **result, "synthesizer": synth}
+    return {
+        "conflict_id": conflict.id,
+        "suggestion": conflict.ai_suggestion,
+        "approval_status": "pending_approval",
+        **result,
+        "synthesizer": synth,
+    }
+
+
+@router.post("/conflicts/{conflict_id}/approve")
+async def approve_conflict_route(
+    conflict_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return await hitl_service.approve_conflict(db, conflict_id, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/conflicts/{conflict_id}/reject")
+async def reject_conflict_route(
+    conflict_id: int,
+    payload: RejectIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return await hitl_service.reject_conflict(db, conflict_id, user, payload.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/conflicts/{conflict_id}/resolve-later")
+async def defer_conflict_route(
+    conflict_id: int,
+    payload: DeferIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return await hitl_service.defer_conflict(db, conflict_id, user, payload.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/conflicts/{conflict_id}/undo")
+async def undo_conflict_route(
+    conflict_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return await hitl_service.undo_last_action(db, conflict_id, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/repo/submit")
+async def submit_repo_route(
+    payload: RepoSubmitIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return await repo_service.submit_user_repo(db, user, payload.repo_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/repo/mine")
+async def get_my_repo_route(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return await repo_service.get_user_repo(db, user)
+
+
+@router.post("/repo/recheck")
+async def recheck_repo_route(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return await repo_service.recheck_user_repo(db, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/repository/discovery")
@@ -263,6 +377,7 @@ async def repository_discovery(
     file_path: str | None = None,
     function_name: str | None = None,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """Phase 1 — AST repository discovery and symbol indexing."""
     result = await RepositoryDiscoveryAgent.discover(db, file_path, function_name)
@@ -270,7 +385,10 @@ async def repository_discovery(
 
 
 @router.get("/commits")
-async def list_commits(db: AsyncSession = Depends(get_db)):
+async def list_commits(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Recent commit history (created automatically when conflicts are resolved)."""
     result = await db.execute(select(CommitLog).order_by(CommitLog.created_at.desc()).limit(20))
     commits = result.scalars().all()
@@ -290,7 +408,10 @@ async def list_commits(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/simulate-demo-conflict")
-async def simulate_demo_conflict(db: AsyncSession = Depends(get_db)):
+async def simulate_demo_conflict(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Demo-safe one-click scenario generator: creates two developers editing the
     SAME file/function at the same time, runs overlap + conflict-risk
@@ -350,7 +471,10 @@ async def github_status():
 
 
 @router.post("/github/sync")
-async def github_sync(db: AsyncSession = Depends(get_db)):
+async def github_sync(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Phase A — Real GitHub Integration (manual trigger).
     Fetches LIVE open Pull Requests from a real repository.

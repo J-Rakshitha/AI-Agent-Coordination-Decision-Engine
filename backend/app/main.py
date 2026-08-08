@@ -27,9 +27,11 @@ from app.models import monitoring  # noqa: F401
 from app.models import user  # noqa: F401
 from app.models import notification  # noqa: F401
 from app.models import enterprise  # noqa: F401
+from app.models import workflow  # noqa: F401
 
 from app.routers import (
     auth_routes,
+    chat_routes,
     dev_collab_routes,
     incident_routes,
     monitoring_routes,
@@ -72,6 +74,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_routes.router)
+app.include_router(chat_routes.router)
 app.include_router(dev_collab_routes.router)
 app.include_router(incident_routes.router)
 app.include_router(monitoring_routes.router)

@@ -98,6 +98,8 @@ async def test_github_webhook_pull_request_triggers_sync(client, monkeypatch):
 async def test_slack_notification_when_configured(client, monkeypatch):
     from app.core.config import settings
     monkeypatch.setattr(settings, "SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/test/webhook")
+    monkeypatch.setattr(settings, "DISCORD_WEBHOOK_URL", "")
+    monkeypatch.setattr(settings, "TEAMS_WEBHOOK_URL", "")
 
     sent = []
 
@@ -115,8 +117,9 @@ async def test_slack_notification_when_configured(client, monkeypatch):
     notifications = (await client.get("/api/system/notifications")).json()
     channels = {n["channel"] for n in notifications}
     assert "slack" in channels
-    assert len(sent) == 1
-    assert "Conflict" in sent[0]["payload"]["text"]
+    slack_sent = [s for s in sent if s["label"] == "Slack"]
+    assert len(slack_sent) == 1
+    assert "Conflict" in slack_sent[0]["payload"]["text"]
 
 
 async def test_discord_notification_when_configured(client, monkeypatch):

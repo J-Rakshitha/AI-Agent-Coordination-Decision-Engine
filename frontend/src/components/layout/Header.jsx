@@ -1,10 +1,9 @@
-import React, { useState } from "react";
-import { NavLink } from "react-router-dom";
+import React from "react";
+import { NavLink, useNavigate } from "react-router-dom";
 import { Moon, Sun, GitBranch, ServerCog, LayoutGrid, Radio, User, LogOut } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import LlmFailureToggle from "../common/LlmFailureToggle";
-import LoginModal from "../common/LoginModal";
 
 const tabs = [
   { to: "/", label: "Overview", icon: LayoutGrid, end: true },
@@ -15,10 +14,14 @@ const tabs = [
 export default function Header({ connected }) {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
-  const [loginOpen, setLoginOpen] = useState(false);
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    logout();
+    navigate("/", { replace: true });
+  }
 
   return (
-    <>
     <header className="flex items-center justify-between px-6 py-4 border-b border-base-border bg-base-surface">
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-devcollab to-accent-aiops" />
@@ -52,28 +55,13 @@ export default function Header({ connected }) {
 
       <div className="flex items-center gap-4">
         <LlmFailureToggle />
-        {user ? (
-          <div className="flex items-center gap-2 text-xs text-ink-muted">
-            <User size={13} />
-            <span className="max-w-[100px] truncate">{user.full_name}</span>
-            <button
-              onClick={logout}
-              className="p-1 rounded-md hover:text-ink-primary transition-colors"
-              title="Sign out"
-            >
-              <LogOut size={13} />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setLoginOpen(true)}
-            className="flex items-center gap-1 text-xs text-ink-muted hover:text-ink-primary transition-colors"
-            title="Sign in (optional)"
-          >
-            <User size={13} />
-            Sign In
+        <div className="flex items-center gap-2 text-xs text-ink-muted">
+          <User size={13} />
+          <span className="max-w-[120px] truncate">{user?.full_name}</span>
+          <button onClick={handleLogout} className="p-1 rounded-md hover:text-ink-primary" title="Sign out">
+            <LogOut size={13} />
           </button>
-        )}
+        </div>
         <div className="flex items-center gap-1.5 text-xs text-ink-muted">
           <Radio size={13} className={connected ? "text-accent-success" : "text-ink-faint"} />
           {connected ? "Live" : "Offline"}
@@ -87,7 +75,5 @@ export default function Header({ connected }) {
         </button>
       </div>
     </header>
-    <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
-    </>
   );
 }
